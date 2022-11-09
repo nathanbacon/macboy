@@ -21,11 +21,5 @@ fn main() {
         pc: 0x0100,
     };
 
-    registers.set_bc(0xABCD);
-    let bc = registers.get_bc();
-
     println!("Hello, world!");
-    println!("{:#04x}", bc);
-    println!("{:#02x}", registers.b);
-    println!("{:#02x}", registers.c);
 }

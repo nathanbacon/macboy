@@ -1,10 +1,19 @@
 use crate::{registers::Registers, mmu::MMU, };
 
-
 pub struct CPU {
   registers: Registers,
   mmu: MMU,
   table: Vec<fn(&mut Registers, &mut MMU)>,
+}
+
+macro_rules! wide {
+    ($reg:expr, $hi:ident, $lo:ident) => {
+        (($reg.$hi as u16) << 8) | ($reg.$lo as u16) 
+    };
+    ($reg:expr, $hi:ident, $lo:ident, $v:expr) => {
+      $reg.$hi = ($v >> 8) as u8;
+      $reg.$lo = $v as u8;
+    };
 }
 
 impl CPU {
@@ -18,52 +27,6 @@ impl CPU {
   }
 
   pub fn build() -> Vec<fn(&mut Registers, &mut MMU)> {
-    macro_rules! BC {
-        ($registers:expr) => {
-          $registers.bc;
-        };
-        ($registers:expr, $val:expr) => {
-          $registers.bc = $val;
-        };
-    }
-    macro_rules! A {
-        () => {
-          {
-            fn read(registers: &Registers) -> u8 {
-              registers.a
-            }
-            read
-          }
-        };
-        ($val:expr) => {
-          {
-            fn write(registers: &mut Registers) {
-              registers.a = $val;
-            }
-            write
-          }
-        };
-    }
-
-    macro_rules! wide {
-        ($reg:expr, $hi:ident, $lo:ident) => {
-           (($reg.$hi as u16) << 8) | ($reg.$lo as u16) 
-        };
-        ($reg:expr, $hi:ident, $lo:ident, $v:expr) => {
-          $reg.$hi = ($v >> 8) as u8;
-          $reg.$lo = $v as u8;
-        };
-    }
-
-    macro_rules! reg {
-        ($registers: expr, $reg:ident) => {
-          $registers.$reg;
-        };
-        ($registers:expr, $reg:ident, $val:expr) => {
-          $registers.$reg = $val;
-        };
-    }
-
     macro_rules! I {
       (NOP) => {
         {
@@ -73,13 +36,11 @@ impl CPU {
           eval
         }
       };
-      (INC_W $dest:ident) => {
+      (INC [$dest_hi:ident $dest_lo:ident]) => {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
-            let res = registers.$dest();
-            registers.half_carry(res == 0);
-            registers.zero(res == 0);
-            registers.negative(false);
+            let res = wide!(registers, $dest_hi, $dest_lo);
+            wide!(registers, $dest_hi, $dest_lo, res + 1);
           }
           eval
         }
@@ -108,11 +69,12 @@ impl CPU {
           eval
         }
       };
-      (LD $dest:ident, u16) => {
+      (LD [$dest_hi:ident $dest_lo:ident], u16) => {
         {
           fn eval(registers: &mut Registers, mmu: &mut MMU) {
             let v = mmu.read_16_bit_immediate(registers.pc);
-            registers.$dest(v);
+            registers.pc += 2;
+            wide!(registers, $dest_hi, $dest_lo, v);
           }
           eval
         }
@@ -123,14 +85,6 @@ impl CPU {
             let v = mmu.read(registers.pc);
             registers.pc += 1;
             registers.$dest = v;
-          }
-          eval
-        }
-      };
-      (LD $dest:ident, $src:expr) => {
-        {
-          fn eval(registers: &mut Registers, mmu: &mut MMU) {
-
           }
           eval
         }
@@ -149,10 +103,10 @@ impl CPU {
           eval
         }
       };
-      (LD ($dest:ident), $src:ident) => {
+      (LD ([$dest_hi:ident $dest_lo:ident]), $src:ident) => {
         {
           fn eval(registers: &mut Registers, mmu: &mut MMU) {
-            let dest_address = registers.$dest();
+            let dest_address = wide!(registers, $dest_hi, $dest_lo);
             let src = registers.$src;
             mmu.write(dest_address, src);
           }
@@ -175,7 +129,7 @@ impl CPU {
           eval
         }
       };
-      (ADD $hi_d:ident $lo_d:ident, $hi_s:ident $lo_s:ident) => {
+      (ADD [$hi_d:ident $lo_d:ident], [$hi_s:ident $lo_s:ident]) => {
         {
           fn eval(registers: &mut Registers, _: &mut MMU) {
             let src = wide!(registers, $hi_s, $lo_s) as u32;
@@ -192,11 +146,12 @@ impl CPU {
           eval
         }
       };
-      (LD $dest:ident, ($src_hi:ident $src_lo:ident)) => {
+      (LD $dest:ident, ([$src_hi:ident $src_lo:ident])) => {
         {
           fn eval(registers: &mut Registers, mmu: &mut MMU) {
-            let src_addr = $src();
+            let src_addr = wide!(registers, $src_hi, $src_lo);
             let src = mmu.read(src_addr);
+            registers.$dest = src;
           }
           eval
         }
@@ -205,15 +160,16 @@ impl CPU {
 
     vec![
       I!(NOP),
-      I!(LD set_bc, u16),
-      I!(LD (get_bc), a),
-      I!(INC_W inc_bc),
+      I!(LD [b c], u16),
+      I!(LD ([b c]), a),
+      I!(INC [b c]),
       I!(INC b),
       I!(DEC b),
       I!(LD b, u8),
       I!(RLCA),
       I!(LD (u16), SP),
-      I!(ADD h l, b c),
+      I!(ADD [h l], [b c]),
+      I!(LD a, ([b c])),
     ]
   }
 
@@ -257,7 +213,7 @@ mod tests {
 
     cpu.call(0x01);
 
-    assert_eq!(cpu.registers.get_bc(), 0xBEEF);
+    assert_eq!(wide!(cpu.registers, b, c), 0xBEEF);
   }
 
   #[test]
@@ -316,7 +272,7 @@ mod tests {
 
     cpu.call(0x03);
 
-    assert_eq!(cpu.registers.get_bc(), 0x6900);
+    assert_eq!(wide!(cpu.registers, b, c), 0x6900);
   }
 
   #[test]
@@ -388,8 +344,8 @@ mod tests {
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x00,
-        h: 0,
-        l: 0,
+        h: 0x11,
+        l: 0x11,
         b: 0xBE,
         c: 0xEF,
         ..Registers::new()
@@ -399,7 +355,29 @@ mod tests {
 
     cpu.call(0x09);
 
-    assert_eq!(cpu.registers.h, 0xBE, "{:#02x} != {:#02x}", cpu.registers.h, 0xBE);
-    assert_eq!(cpu.registers.l, 0xEF);
+    assert_eq!(cpu.registers.h, 0xD0, "{:#02x} != {:#02x}", cpu.registers.h, 0xD0);
+    assert_eq!(cpu.registers.l, 0x00);
+  }
+
+  #[test]
+  fn test_ld_a_bc_() {
+    let mut mmu = MMU::new();
+    mmu.write(0x1234, 0x69);
+
+    let mut cpu = CPU { 
+      registers: Registers {
+        pc: 0x00,
+        a: 0,
+        b: 0x12,
+        c: 0x34,
+        ..Registers::new()
+      },
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x0A);
+
+    assert_eq!(cpu.registers.a, 0x69, "{:#02x} != {:#02x}", cpu.registers.a, 0x69);
   }
 }
