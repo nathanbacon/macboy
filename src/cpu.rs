@@ -30,7 +30,7 @@ impl CPU {
     macro_rules! I {
       (NOP) => {
         {
-          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
+          fn eval(_registers: &mut Registers, _mmu: &mut MMU) {
             println!("NOP");
           }
           eval
@@ -121,10 +121,58 @@ impl CPU {
             registers.zero(false);
             registers.negative(false);
             registers.half_carry(false);
-            let half_carry_bit = a >> 8;
-            registers.carry(half_carry_bit == 0x01);
-            a |= half_carry_bit;
+            let carry_bit = a >> 8;
+            registers.carry(carry_bit == 0x01);
+            a |= carry_bit;
             registers.a = a as u8;
+          }
+          eval
+        }
+      };
+      (RLA) => {
+        {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
+            let mut a = registers.a as u16;
+            a <<= 1;
+            registers.zero(false);
+            registers.negative(false);
+            registers.half_carry(false);
+            let carry_bit = 0x100 & a;
+            registers.carry(carry_bit == 0x100);
+            registers.a = a as u8;
+          }
+          eval
+        }
+      };
+      (RRA) => {
+        {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
+            let mut a = registers.a;
+            let carry_bit = a & 0x01;
+            a >>= 1;
+            registers.zero(false);
+            registers.negative(false);
+            registers.half_carry(false);
+            registers.carry(carry_bit == 0x01);
+            registers.a = a;
+          }
+          eval
+        }
+      };
+      (RRCA) => {
+        {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
+            let mut a = registers.a;
+            let mut carry_bit = a & 0x01;
+            registers.carry(carry_bit == 0x01);
+            a >>= 1;
+            registers.zero(false);
+            registers.negative(false);
+            registers.half_carry(false);
+            
+            carry_bit <<= 7;
+            a |= carry_bit;
+            registers.a = a;
           }
           eval
         }
@@ -165,6 +213,28 @@ impl CPU {
           eval
         }
       };
+      (STOP) => {
+        {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
+            println!("STOP");
+          }
+          eval
+        }
+      };
+      (JR i8) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let immed = mmu.read(registers.pc) as i8;
+            registers.pc += 1;
+            let immed = i16::from(immed);
+            let signed_pc = registers.pc as i16;
+            let new_pc = signed_pc + immed;
+            registers.pc = (new_pc as u16);
+          }
+          eval
+        }
+      };
+
     }
 
     vec![
@@ -180,6 +250,27 @@ impl CPU {
       I!(ADD [h l], [b c]),
       I!(LD a, ([b c])),
       I!(DEC [b c]),
+      I!(INC c),
+      I!(DEC c),
+      I!(LD c, u8),
+      I!(RRCA),
+
+      I!(STOP),
+      I!(LD [d e], u16),
+      I!(LD ([d e]), a),
+      I!(INC [d e]),
+      I!(INC d),
+      I!(DEC d),
+      I!(LD d, u8),
+      I!(RLA),
+      I!(JR i8),
+      I!(ADD [h l], [d e]),
+      I!(LD a, ([d e])),
+      I!(DEC [d e]),
+      I!(INC e),
+      I!(DEC e),
+      I!(LD e, u8),
+      I!(RRA),
     ]
   }
 
@@ -330,6 +421,51 @@ mod tests {
   }
 
   #[test]
+  fn test_rla() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        a: 0b11000000,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x17);
+
+    assert_eq!(cpu.registers.a, 0b10000000, "{:#010b} != {:#010b}", cpu.registers.a, 0b10000000);
+  }
+
+  #[test]
+  fn test_rra() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        a: 0b10000001,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x1F);
+
+    assert_eq!(cpu.registers.a, 0b01000000, "{:#010b} != {:#010b}", cpu.registers.a, 0b01000000);
+  }
+
+  #[test]
+  fn test_rrca() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        a: 0b10000001,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x0F);
+
+    assert_eq!(cpu.registers.a, 0b11000000, "{:#010b} != {:#010b}", cpu.registers.a, 0b11000000);
+  }
+
+  #[test]
   fn test_ld_u16_sp() {
     let mut cpu = CPU { 
       registers: Registers {
@@ -405,6 +541,24 @@ mod tests {
 
     assert_eq!(cpu.registers.b, 0xA1, "{:#02x} != {:#02x}", cpu.registers.b, 0xA1);
     assert_eq!(cpu.registers.c, 0xFF, "{:#02x} != {:#02x}", cpu.registers.c, 0xFF);
+  }
+
+  #[test]
+  fn test_jr_i8() {
+    let mut mmu = MMU::new();
+    mmu.write(0x0010, 0x05);
+    let mut cpu = CPU { 
+      registers: Registers {
+        pc: 0x0010,
+        ..Registers::new()
+      },
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x18);
+
+    assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
   }
 
 }
