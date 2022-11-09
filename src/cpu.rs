@@ -156,6 +156,15 @@ impl CPU {
           eval
         }
       };
+      (DEC [$src_hi:ident $src_lo:ident]) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let res = wide!(registers, b, c);
+            wide!(registers, b, c, res - 1);
+          }
+          eval
+        }
+      };
     }
 
     vec![
@@ -170,6 +179,7 @@ impl CPU {
       I!(LD (u16), SP),
       I!(ADD [h l], [b c]),
       I!(LD a, ([b c])),
+      I!(DEC [b c]),
     ]
   }
 
@@ -380,4 +390,24 @@ mod tests {
 
     assert_eq!(cpu.registers.a, 0x69, "{:#02x} != {:#02x}", cpu.registers.a, 0x69);
   }
+
+  #[test]
+  fn test_dec_bc() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        pc: 0x00,
+        a: 0,
+        b: 0xA2,
+        c: 0x00,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x0B);
+
+    assert_eq!(cpu.registers.b, 0xA1, "{:#02x} != {:#02x}", cpu.registers.b, 0xA1);
+    assert_eq!(cpu.registers.c, 0xFF, "{:#02x} != {:#02x}", cpu.registers.c, 0xFF);
+  }
+
 }
