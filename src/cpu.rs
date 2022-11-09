@@ -115,7 +115,7 @@ impl CPU {
       };
       (RLCA) => {
         {
-          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
             let mut a = registers.a as u16;
             a <<= 1;
             registers.zero(false);
@@ -131,7 +131,7 @@ impl CPU {
       };
       (ADD [$hi_d:ident $lo_d:ident], [$hi_s:ident $lo_s:ident]) => {
         {
-          fn eval(registers: &mut Registers, _: &mut MMU) {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
             let src = wide!(registers, $hi_s, $lo_s) as u32;
             let dest = wide!(registers, $hi_d, $lo_d) as u32;
             let res = src + dest;
@@ -158,7 +158,7 @@ impl CPU {
       };
       (DEC [$src_hi:ident $src_lo:ident]) => {
         {
-          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
             let res = wide!(registers, b, c);
             wide!(registers, b, c, res - 1);
           }
@@ -193,10 +193,7 @@ impl CPU {
   pub fn call(&mut self, opcode: u8) {
     {
       let opcode = opcode as usize;
-      if self.table.len() > opcode {
-        self.table[opcode](&mut self.registers, &mut self.mmu);
-        return;
-      }
+      self.table[opcode](&mut self.registers, &mut self.mmu);
     }
   }
 
