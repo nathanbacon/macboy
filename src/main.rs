@@ -17,6 +17,8 @@ fn main() {
         e: 0xd8,
         h: 0x01,
         l: 0x4d,
+        s: 0xFF,
+        p: 0xFE,
         sp: 0xFFFE,
         pc: 0x0100,
     };

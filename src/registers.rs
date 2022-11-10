@@ -7,9 +7,16 @@ pub struct Registers {
   pub e: u8,
   pub h: u8,
   pub l: u8,
+  pub s: u8,
+  pub p: u8,
   pub sp: u16,
   pub pc: u16,
 }
+
+const ZERO: u8 = 0x80;
+const NEGATIVE: u8 = 0x40;
+const HALF_CARRY: u8 = 0x20;
+const CARRY: u8 = 0x10;
 
 macro_rules! wide {
   ($reg:expr, $hi:ident, $lo:ident) => {
@@ -32,26 +39,61 @@ impl Registers {
       e: 0xd8,
       h: 0x01,
       l: 0x4d,
+      s: 0xFF,
+      p: 0xFE,
       sp: 0xFFFE,
       pc: 0x0100,
     }
   }
 
-  pub fn zero(&mut self, is_zero: bool) {
+  pub fn get_zero(&self) -> bool {
+    self.f & ZERO == ZERO
+  }
 
+  pub fn zero(&mut self, is_zero: bool) {
+    if is_zero {
+      self.f |= ZERO;
+    } else {
+      self.f &= ZERO ^ 0xFF;
+    }
   }
 
   pub fn negative(&mut self, is_negative: bool) {
+    if is_negative {
+      self.f |= NEGATIVE;
+    } else {
+      self.f &= NEGATIVE ^ 0xFF;
+    }
+  }
 
+  pub fn get_negative(&self) -> bool {
+    self.f & NEGATIVE == 0x40
   }
 
   pub fn carry(&mut self, is_carry: bool) {
+    if is_carry {
+      self.f |= CARRY;
+    } else {
+      self.f &= CARRY ^ 0xFF;
+    }
+  }
 
+  pub fn get_carry(&self) -> bool {
+    self.f & CARRY == 0x10
+  }
+
+  pub fn get_half_carry(&self) -> bool {
+    self.f & HALF_CARRY == 0x20
   }
 
   pub fn half_carry(&mut self, is_half_carry: bool) {
-
+    if is_half_carry {
+      self.f |= HALF_CARRY;
+    } else {
+      self.f &= HALF_CARRY ^ 0xFF;
+    }
   }
+
 }
 
 #[cfg(test)]

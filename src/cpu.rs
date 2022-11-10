@@ -45,6 +45,14 @@ impl CPU {
           eval
         }
       };
+      (INC SP) => {
+        {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
+            registers.sp += 1;
+          }
+          eval
+        }
+      };
       (INC $dest:ident) => {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
@@ -53,6 +61,19 @@ impl CPU {
             registers.zero(res == 0xFF);
             registers.negative(false);
             registers.$dest = res + 1;
+          }
+          eval
+        }
+      };
+      (INC (HL)) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let address = wide!(registers, h, l);
+            let res = mmu.read(address);
+            registers.half_carry(res & 0x0F == 0x0F);
+            registers.zero(res == 0xFF);
+            registers.negative(false);
+            mmu.write(address, res + 1);
           }
           eval
         }
@@ -69,12 +90,35 @@ impl CPU {
           eval
         }
       };
+      (DEC (HL)) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let address = wide!(registers, h, l);
+            let res = mmu.read(address);
+            registers.half_carry(res & 0x0F == 0);
+            registers.zero(res == 0x01);
+            registers.negative(true);
+            mmu.write(address, res - 1);
+          }
+          eval
+        }
+      };
       (LD [$dest_hi:ident $dest_lo:ident], u16) => {
         {
           fn eval(registers: &mut Registers, mmu: &mut MMU) {
             let v = mmu.read_16_bit_immediate(registers.pc);
             registers.pc += 2;
             wide!(registers, $dest_hi, $dest_lo, v);
+          }
+          eval
+        }
+      };
+      (LD sp, u16) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let v = mmu.read_16_bit_immediate(registers.pc);
+            registers.pc += 2;
+            registers.sp = v;
           }
           eval
         }
@@ -89,6 +133,25 @@ impl CPU {
           eval
         }
       };
+      (LD $dest:ident, (HL)) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let address = wide!(registers, h, l);
+            let v = mmu.read(address);
+            registers.pc += 1;
+            registers.$dest = v;
+          }
+          eval
+        }
+      };
+      (LD $dest:ident, $src:ident) => {
+        {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
+            registers.$dest = registers.$src;
+          }
+          eval
+        }
+      };
       (LD (u16), SP) => {
         {
           fn eval(registers: &mut Registers, mmu: &mut MMU) {
@@ -99,6 +162,18 @@ impl CPU {
             let upper = (src >> 8) as u8;
             mmu.write(dest_address, lower);
             mmu.write(dest_address + 1, upper);
+          }
+          eval
+        }
+      };
+      (LD (HL), u8) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let src = registers.pc;
+            let src = mmu.read(src);
+            registers.pc += 1;
+            let dest_address = wide!(registers, h, l);
+            mmu.write(dest_address, src);
           }
           eval
         }
@@ -234,7 +309,160 @@ impl CPU {
           eval
         }
       };
+      (JR NZ, i8) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let immed = mmu.read(registers.pc) as i8;
+            registers.pc += 1;
+            let not_zero = !registers.get_zero();
+            if !not_zero {
+              return;
+            }
 
+            let immed = i16::from(immed);
+            let signed_pc = registers.pc as i16;
+            let new_pc = signed_pc + immed;
+            registers.pc = (new_pc as u16);
+          }
+          eval
+        }
+      };
+      (JR NC, i8) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let immed = mmu.read(registers.pc) as i8;
+            registers.pc += 1;
+            let not_carry = !registers.get_carry();
+            if !not_carry {
+              return;
+            }
+
+            let immed = i16::from(immed);
+            let signed_pc = registers.pc as i16;
+            let new_pc = signed_pc + immed;
+            registers.pc = (new_pc as u16);
+          }
+          eval
+        }
+      };
+      (JR Z, i8) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let immed = mmu.read(registers.pc) as i8;
+            registers.pc += 1;
+            let zero = registers.get_zero();
+            if !zero {
+              return;
+            }
+
+            let immed = i16::from(immed);
+            let signed_pc = registers.pc as i16;
+            let new_pc = signed_pc + immed;
+            registers.pc = (new_pc as u16);
+          }
+          eval
+        }
+      };
+      (JR C, i8) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let immed = mmu.read(registers.pc) as i8;
+            registers.pc += 1;
+            let carry = registers.get_carry();
+            if carry {
+              return;
+            }
+
+            let immed = i16::from(immed);
+            let signed_pc = registers.pc as i16;
+            let new_pc = signed_pc + immed;
+            registers.pc = (new_pc as u16);
+          }
+          eval
+        }
+      };
+      (LD (HL+), a) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let hl = wide!(registers, h, l);
+            let a = registers.a;
+            mmu.write(hl, a);
+            wide!(registers, h, l, hl + 1);
+          }
+          eval
+        }
+      };
+      (LD (HL-), a) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let hl = wide!(registers, h, l);
+            let a = registers.a;
+            mmu.write(hl, a);
+            wide!(registers, h, l, hl - 1);
+          }
+          eval
+        }
+      };
+      (LD a, (HL+)) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let hl = wide!(registers, h, l);
+            let v = mmu.read(hl);
+            registers.a = v;
+            wide!(registers, h, l, hl + 1);
+          }
+          eval
+        }
+      };
+      (LD a, (HL-)) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let hl = wide!(registers, h, l);
+            let v = mmu.read(hl);
+            registers.a = v;
+            wide!(registers, h, l, hl - 1);
+          }
+          eval
+        }
+      };
+      (DAA) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+          }
+          eval
+        }
+      };
+      (CPL) => {
+        {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
+            registers.a = !registers.a;
+            registers.negative(true);
+            registers.half_carry(true);
+          }
+          eval
+        }
+      }; 
+      (SCF) => {
+        {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
+            registers.negative(false);
+            registers.half_carry(false);
+            registers.carry(true);
+          }
+          eval
+        }
+      };
+      (CCF) => {
+        {
+          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
+            registers.negative(false);
+            registers.half_carry(false);
+            let carry = registers.get_carry();
+            registers.carry(!carry);
+          }
+          eval
+        }
+      };
     }
 
     vec![
@@ -271,6 +499,58 @@ impl CPU {
       I!(DEC e),
       I!(LD e, u8),
       I!(RRA),
+
+      I!(JR NZ, i8),
+      I!(LD [h l], u16),
+      I!(LD (HL+), a),
+      I!(INC [h l]),
+      I!(INC h),
+      I!(DEC h),
+      I!(LD h, u8),
+      I!(DAA),
+      I!(JR Z, i8),
+      I!(ADD [h l], [h l]),
+      I!(LD a, (HL+)),
+      I!(DEC [h l]),
+      I!(INC l),
+      I!(DEC l),
+      I!(LD l, u8),
+      I!(CPL),
+
+      I!(JR NC, i8),
+      I!(LD sp, u16),
+      I!(LD (HL-), a),
+      I!(INC SP),
+      I!(INC (HL)),
+      I!(DEC (HL)),
+      I!(LD (HL), u8),
+      I!(SCF),
+      I!(JR C, i8),
+      I!(ADD [h l], [s p]),
+      I!(LD a, (HL-)),
+      I!(DEC [s p]),
+      I!(INC a),
+      I!(DEC a),
+      I!(LD a, u8),
+      I!(CCF),
+
+      I!(LD b, b),
+      I!(LD b, c),
+      I!(LD b, d),
+      I!(LD b, e),
+      I!(LD b, h),
+      I!(LD b, l),
+      I!(LD b, (HL)),
+      I!(LD b, a),
+      I!(LD c, b),
+      I!(LD c, c),
+      I!(LD c, d),
+      I!(LD c, e),
+      I!(LD c, h),
+      I!(LD c, l),
+      I!(LD c, (HL)),
+      I!(LD c, a),
+      
     ]
   }
 
@@ -329,6 +609,23 @@ mod tests {
     }; 
 
     cpu.call(0x06);
+
+    assert_eq!(cpu.registers.b, 0x69);
+  }
+
+  #[test]
+  fn test_ld_b_c() {
+
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0x42,
+        c: 0x69,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x41);
 
     assert_eq!(cpu.registers.b, 0x69);
   }
@@ -559,6 +856,137 @@ mod tests {
     cpu.call(0x18);
 
     assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
+  }
+
+  #[test]
+  fn test_jr_i8_negative() {
+    let mut mmu = MMU::new();
+    mmu.write(0x0010, i8::from(-5) as u8);
+    let mut cpu = CPU { 
+      registers: Registers {
+        pc: 0x0010,
+        ..Registers::new()
+      },
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x18);
+
+    assert_eq!(cpu.registers.pc, 0x0010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0010 - 5 + 1);
+  }
+
+  #[test]
+  fn test_jr_nz_i8_zero() {
+    let mut mmu = MMU::new();
+    mmu.write(0x0010, 0x05);
+    let mut registers = Registers {
+      pc: 0x0010,
+      ..Registers::new()
+    };
+    registers.zero(true);
+
+    let mut cpu = CPU { 
+      registers,
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x20);
+
+    assert_eq!(cpu.registers.pc, 0x0011, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0011);
+  }
+
+  #[test]
+  fn test_jr_nz_i8_not_zero() {
+    let mut mmu = MMU::new();
+    mmu.write(0x0010, 0x05);
+    let mut registers = Registers {
+      pc: 0x0010,
+      ..Registers::new()
+    };
+    registers.zero(false);
+
+    let mut cpu = CPU { 
+      registers,
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x20);
+
+    assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
+  }
+
+  #[test]
+  fn test_jr_z_i8_zero() {
+    let mut mmu = MMU::new();
+    mmu.write(0x0010, 0x05);
+    let mut registers = Registers {
+      pc: 0x0010,
+      ..Registers::new()
+    };
+    registers.zero(true);
+
+    let mut cpu = CPU { 
+      registers,
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x28);
+
+    assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
+  }
+
+  #[test]
+  fn test_jr_z_i8_not_zero() {
+    let mut mmu = MMU::new();
+    mmu.write(0x0010, 0x05);
+    let mut registers = Registers {
+      pc: 0x0010,
+      ..Registers::new()
+    };
+    registers.zero(false);
+
+    let mut cpu = CPU { 
+      registers,
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x28);
+
+    assert_eq!(cpu.registers.pc, 0x0011, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0011);
+  }
+
+  #[test]
+  fn test_cpl() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        a: 0b10101010,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x2F);
+
+    assert_eq!(cpu.registers.a, 0b01010101);
+  }
+
+  #[test]
+  fn test_ccf() {
+    let mut registers = Registers::new();
+    registers.carry(true);
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x3F);
+
+    assert_eq!(cpu.registers.get_carry(), false);
   }
 
 }
