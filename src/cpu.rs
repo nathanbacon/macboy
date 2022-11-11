@@ -40,15 +40,8 @@ impl CPU {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
             let res = wide!(registers, $dest_hi, $dest_lo);
-            wide!(registers, $dest_hi, $dest_lo, res + 1);
-          }
-          eval
-        }
-      };
-      (INC SP) => {
-        {
-          fn eval(registers: &mut Registers, _mmu: &mut MMU) {
-            registers.sp += 1;
+            let (res, _) = res.overflowing_add(1);
+            wide!(registers, $dest_hi, $dest_lo, res);
           }
           eval
         }
@@ -56,11 +49,12 @@ impl CPU {
       (INC $dest:ident) => {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
-            let res: u8 = registers.$dest;
+            let res = registers.$dest;
             registers.half_carry(res & 0x0F == 0x0F);
             registers.zero(res == 0xFF);
             registers.negative(false);
-            registers.$dest = res + 1;
+            let (res, _) = res.overflowing_add(1);
+            registers.$dest = res;
           }
           eval
         }
@@ -73,7 +67,8 @@ impl CPU {
             registers.half_carry(res & 0x0F == 0x0F);
             registers.zero(res == 0xFF);
             registers.negative(false);
-            mmu.write(address, res + 1);
+            let (res, _) = res.overflowing_add(1);
+            mmu.write(address, res);
           }
           eval
         }
@@ -84,7 +79,8 @@ impl CPU {
             let res: u8 = registers.$dest;
             registers.half_carry(res & 0x0F == 0);
             registers.negative(true);
-            registers.$dest = res - 1;
+            let (res, _) = res.overflowing_sub(1);
+            registers.$dest = res;
             registers.zero(registers.$dest == 0);
           }
           eval
@@ -98,7 +94,8 @@ impl CPU {
             registers.half_carry(res & 0x0F == 0);
             registers.zero(res == 0x01);
             registers.negative(true);
-            mmu.write(address, res - 1);
+            let (res, _) = res.overflowing_sub(1);
+            mmu.write(address, res);
           }
           eval
         }
@@ -255,14 +252,14 @@ impl CPU {
       (ADD [$hi_d:ident $lo_d:ident], [$hi_s:ident $lo_s:ident]) => {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
-            let src = wide!(registers, $hi_s, $lo_s) as u32;
-            let dest = wide!(registers, $hi_d, $lo_d) as u32;
-            let res = src + dest;
+            let src = wide!(registers, $hi_s, $lo_s) as u16;
+            let dest = wide!(registers, $hi_d, $lo_d) as u16;
+            let (res, carry) = src.overflowing_add(dest);
 
             registers.negative(false);
             let half_carry = (((0x0FFF & src) + (0x0FFF & dest)) & 0x1000) > 0;
             registers.half_carry(half_carry);
-            registers.carry((res & 0x10000) == 0x10000);
+            registers.carry(carry);
 
             wide!(registers, $hi_d, $lo_d, res);
           }
@@ -272,14 +269,14 @@ impl CPU {
       (ADD $dest:ident, $src:ident) => {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
-            let src = registers.$src as u16;
-            let dest = registers.$dest as u16;
-            let res = src + dest;
+            let src = registers.$src as u8;
+            let dest = registers.$dest as u8;
+            let (res, carry) = src.overflowing_add(dest);
 
             registers.negative(false);
             let half_carry = (((0x0F & src) + (0x0F & dest)) & 0xF0) > 0;
             registers.half_carry(half_carry);
-            registers.carry((res & 0xF00) > 0);
+            registers.carry(carry);
             let res = res as u8;
             registers.zero(res == 0);
             registers.$dest = res;
@@ -290,16 +287,16 @@ impl CPU {
       (SUB A, $src:ident) => {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
-            let src = registers.$src as u16;
+            let src = registers.$src as u8;
             // use two's complement subtraction
             let src = !src + 1;
-            let dest = registers.a as u16;
-            let res = dest + src;
+            let dest = registers.a;
+            let (res, carry) = dest.overflowing_add(src);
 
             registers.negative(true);
             let half_carry = (((0x0F & src) + (0x0F & dest)) & 0x10) > 0;
             registers.half_carry(!half_carry);
-            registers.carry(!((res & 0x100) > 0));
+            registers.carry(!carry);
             let res = res as u8;
             registers.zero(res == 0);
             registers.a = res;
@@ -311,16 +308,16 @@ impl CPU {
         {
           fn eval(registers: &mut Registers, mmu: &mut MMU) {
             let src = wide!(registers, h, l);
-            let src = mmu.read(src) as u16;
+            let src = mmu.read(src);
             // use two's complement subtraction
             let src = !src + 1;
-            let dest = registers.a as u16;
-            let res = dest + src;
+            let dest = registers.a;
+            let (res, carry) = dest.overflowing_add(src);
 
             registers.negative(true);
             let half_carry = (((0x0F & src) + (0x0F & dest)) & 0x10) > 0;
             registers.half_carry(!half_carry);
-            registers.carry(!((res & 0x100) > 0));
+            registers.carry(!carry);
             let res = res as u8;
             registers.zero(res == 0);
             registers.a = res;
@@ -331,19 +328,20 @@ impl CPU {
       (SBC A, $src:ident) => {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
-            let src = registers.$src as u16;
+            let src = registers.$src;
             let carry = (registers.f >> 4) & 0x01;
-            let carry = carry as u16;
-            let src = src + carry;
+            let carry = carry;
+            let (src, inc_carry) = src.overflowing_add(carry);
             // use two's complement subtraction
             let src = !src + 1;
-            let dest = registers.a as u16;
-            let res = dest + src;
+            let dest = registers.a;
+            let (res, carry) = dest.overflowing_add(src);
+            let carry = carry || inc_carry;
 
             registers.negative(true);
             let half_carry = (((0x0F & src) + (0x0F & dest)) & 0x10) > 0;
             registers.half_carry(!half_carry);
-            registers.carry(!((res & 0x100) > 0));
+            registers.carry(!carry);
             let res = res as u8;
             registers.zero(res == 0);
             registers.a = res;
@@ -355,19 +353,20 @@ impl CPU {
         {
           fn eval(registers: &mut Registers, mmu: &mut MMU) {
             let src = wide!(registers, h, l);
-            let src = mmu.read(src) as u16;
+            let src = mmu.read(src);
             let carry = (registers.f >> 4) & 0x01;
-            let carry = carry as u16;
-            let src = src + carry;
+            let carry = carry;
+            let (src, inc_carry) = src.overflowing_add(carry);
             // use two's complement subtraction
             let src = !src + 1;
-            let dest = registers.a as u16;
-            let res = dest + src;
+            let dest = registers.a;
+            let (res, carry) = dest.overflowing_add(src);
+            let carry = carry || inc_carry;
 
             registers.negative(true);
             let half_carry = (((0x0F & src) + (0x0F & dest)) & 0x10) > 0;
             registers.half_carry(!half_carry);
-            registers.carry(!((res & 0x100) > 0));
+            registers.carry(!carry);
             let res = res as u8;
             registers.zero(res == 0);
             registers.a = res;
@@ -378,16 +377,18 @@ impl CPU {
       (ADC A, $src:ident) => {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
-            let src = registers.$src as u16;
-            let dest = registers.a as u16;
+            let src = registers.$src;
+            let dest = registers.a;
             let carry = (registers.f >> 4) & 0x01;
-            let carry = carry as u16;
-            let res = src + dest + carry;
+            let carry = carry;
+            let (res, carry_1) = src.overflowing_add(carry);
+            let (res, carry_2) = res.overflowing_add(dest);
+            let carry = carry_1 || carry_2;
 
             registers.negative(false);
             let half_carry = (((0x0F & src) + (0x0F & dest)) & 0xF0) > 0;
             registers.half_carry(half_carry);
-            registers.carry((res & 0xF00) > 0);
+            registers.carry(carry);
             let res = res as u8;
             registers.zero(res == 0);
             registers.a = res;
@@ -399,14 +400,14 @@ impl CPU {
         {
           fn eval(registers: &mut Registers, mmu: &mut MMU) {
             let src = wide!(registers, h, l);
-            let src = mmu.read(src) as u16;
-            let dest = registers.$dest as u16;
-            let res = src + dest;
+            let src = mmu.read(src);
+            let dest = registers.$dest;
+            let (res, carry) = dest.overflowing_add(src);
 
             registers.negative(false);
             let half_carry = (((0x0F & src) + (0x0F & dest)) & 0xF0) > 0;
             registers.half_carry(half_carry);
-            registers.carry((res & 0xF00) > 0);
+            registers.carry(carry);
             let res = res as u8;
             registers.zero(res == 0);
             registers.$dest = res;
@@ -418,16 +419,18 @@ impl CPU {
         {
           fn eval(registers: &mut Registers, mmu: &mut MMU) {
             let src = wide!(registers, h, l);
-            let src = mmu.read(src) as u16;
-            let dest = registers.a as u16;
+            let src = mmu.read(src);
+            let dest = registers.a;
             let carry = (registers.f >> 4) & 0x01;
-            let carry = carry as u16;
-            let res = src + dest + carry;
+            let carry = carry;
+            let (res, carry_1) = src.overflowing_add(carry);
+            let (res, carry_2) = res.overflowing_add(dest);
+            let carry = carry_1 || carry_2;
 
             registers.negative(false);
             let half_carry = (((0x0F & src) + (0x0F & dest)) & 0xF0) > 0;
             registers.half_carry(half_carry);
-            registers.carry((res & 0xF00) > 0);
+            registers.carry(carry);
             let res = res as u8;
             registers.zero(res == 0);
             registers.a = res;
@@ -537,16 +540,16 @@ impl CPU {
       (CP A, $src:ident) => {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
-            let src = registers.$src as u16;
+            let src = registers.$src;
             // use two's complement subtraction
             let src = !src + 1;
-            let dest = registers.a as u16;
-            let res = dest + src;
+            let dest = registers.a;
+            let (res, carry) = dest.overflowing_add(src);
 
             registers.negative(true);
             let half_carry = (((0x0F & src) + (0x0F & dest)) & 0x10) > 0;
             registers.half_carry(!half_carry);
-            registers.carry(!((res & 0x100) > 0));
+            registers.carry(!carry);
             let res = res as u8;
             registers.zero(res == 0);
           }
@@ -557,17 +560,16 @@ impl CPU {
         {
           fn eval(registers: &mut Registers, mmu: &mut MMU) {
             let src = wide!(registers, h, l);
-            let src = mmu.read(src) as u16;
+            let src = mmu.read(src);
             // use two's complement subtraction
             let src = !src + 1;
-            let dest = registers.a as u16;
-            let res = dest + src;
+            let dest = registers.a;
+            let (res, carry) = dest.overflowing_add(src);
 
             registers.negative(true);
             let half_carry = (((0x0F & src) + (0x0F & dest)) & 0x10) > 0;
             registers.half_carry(!half_carry);
-            registers.carry(!((res & 0x100) > 0));
-            let res = res as u8;
+            registers.carry(!carry);
             registers.zero(res == 0);
           }
           eval
@@ -587,7 +589,8 @@ impl CPU {
         {
           fn eval(registers: &mut Registers, _mmu: &mut MMU) {
             let res = wide!(registers, b, c);
-            wide!(registers, b, c, res - 1);
+            let (res, _) = res.overflowing_sub(1);
+            wide!(registers, b, c, res);
           }
           eval
         }
@@ -774,6 +777,28 @@ impl CPU {
           eval
         }
       };
+      (POP [$src_hi:ident $src_lo:ident]) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let sp = wide!(registers, s, p);
+            let top = mmu.read(sp);
+            wide!(registers, s, p, top + 2);
+            wide!(registers, $src_hi, $src_lo, top);
+          }
+          eval
+        } 
+      };
+      (PUSH [$src_hi:ident $src_lo:ident]) => {
+        {
+          fn eval(registers: &mut Registers, mmu: &mut MMU) {
+            let sp = wide!(registers, s, p);
+            let nn = wide!(registers, $src_hi, $src_lo);
+            mmu.write(sp, nn);
+            wide!(registers, s, p, sp - 2);
+          }
+          eval
+        } 
+      };
     }
 
     vec![
@@ -831,7 +856,7 @@ impl CPU {
       I!(JR NC, i8),
       I!(LD sp, u16),
       I!(LD (HL-), a),
-      I!(INC SP),
+      I!(INC [s p]),
       I!(INC (HL)),
       I!(DEC (HL)),
       I!(LD (HL), u8),
@@ -1515,6 +1540,22 @@ mod tests {
     assert_eq!(cpu.registers.a, 0b10010011, "{:#010b} != {:#010b}", cpu.registers.a, 0b10010011);
     assert!(cpu.registers.get_half_carry());
     assert!(!cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_sub_a_b() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        a: 0x69,
+        b: 0x33,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x90);
+
+    assert_eq!(cpu.registers.a, 0x36);
   }
 
 }
