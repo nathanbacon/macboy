@@ -67,7 +67,7 @@ impl Registers {
   }
 
   pub fn get_negative(&self) -> bool {
-    self.f & NEGATIVE == 0x40
+    self.f & NEGATIVE == NEGATIVE
   }
 
   pub fn carry(&mut self, is_carry: bool) {
@@ -79,11 +79,11 @@ impl Registers {
   }
 
   pub fn get_carry(&self) -> bool {
-    self.f & CARRY == 0x10
+    self.f & CARRY == CARRY
   }
 
   pub fn get_half_carry(&self) -> bool {
-    self.f & HALF_CARRY == 0x20
+    self.f & HALF_CARRY == HALF_CARRY
   }
 
   pub fn half_carry(&mut self, is_half_carry: bool) {
