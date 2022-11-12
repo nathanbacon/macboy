@@ -50,6 +50,10 @@ impl Registers {
     self.f & ZERO == ZERO
   }
 
+  pub fn get_not_zero(&self) -> bool {
+    !self.get_zero()
+  }
+
   pub fn zero(&mut self, is_zero: bool) {
     if is_zero {
       self.f |= ZERO;
@@ -80,6 +84,10 @@ impl Registers {
 
   pub fn get_carry(&self) -> bool {
     self.f & CARRY == CARRY
+  }
+
+  pub fn get_not_carry(&self) -> bool {
+    !self.get_carry()
   }
 
   pub fn get_half_carry(&self) -> bool {
