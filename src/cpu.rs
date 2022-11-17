@@ -3452,4 +3452,24 @@ use super::*;
     assert!(!cpu.registers.get_carry());
   }
 
+  #[test]
+  fn test_sla_b() {
+    let mut registers = Registers {
+      b: 0b11000001,
+      ..Registers::new()
+    };
+
+    registers.carry(true);
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x20);
+
+    assert_eq!(cpu.registers.b, 0b10000000, "{:#010b} != {:#010b}", cpu.registers.b, 0b10000001);
+    assert!(cpu.registers.get_carry());
+  }
+
 }
