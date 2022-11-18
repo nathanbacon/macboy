@@ -3331,6 +3331,28 @@ use super::*;
 
     assert_eq!(cpu.registers.b, 0b10000001, "{:#010b} != {:#010b}", cpu.registers.b, 0b10000001);
     assert!(cpu.registers.get_carry());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_negative());
+  }
+
+  #[test]
+  fn test_rlc_b_zero() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0b00000000,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x00);
+
+    assert_eq!(cpu.registers.b, 0, "{:#010b} != {:#010b}", cpu.registers.b, 0);
+    assert!(cpu.registers.get_zero());
+    assert!(!cpu.registers.get_carry());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_negative());
   }
 
   #[test]
@@ -3348,6 +3370,8 @@ use super::*;
 
     assert_eq!(cpu.registers.b, 0b00001000, "{:#010b} != {:#010b}", cpu.registers.b, 0b00001000);
     assert!(!cpu.registers.get_carry());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_negative());
   }
   
   #[test]
@@ -3364,6 +3388,9 @@ use super::*;
     cpu.call(0x08);
 
     assert_eq!(cpu.registers.b, 0b11000000, "{:#010b} != {:#010b}", cpu.registers.b, 0b11000000);
+    assert!(cpu.registers.get_carry());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_negative());
   }
 
   #[test]
@@ -3385,6 +3412,8 @@ use super::*;
 
     assert_eq!(cpu.registers.b, 0b00000101, "{:#010b} != {:#010b}", cpu.registers.b, 0b00000101);
     assert!(cpu.registers.get_carry());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_negative());
   }
 
   #[test]
@@ -3406,6 +3435,8 @@ use super::*;
 
     assert_eq!(cpu.registers.b, 0b00000100, "{:#010b} != {:#010b}", cpu.registers.b, 0b00000100);
     assert!(cpu.registers.get_carry());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_negative());
   }
 
   #[test]
@@ -3427,6 +3458,8 @@ use super::*;
 
     assert_eq!(cpu.registers.b, 0b11000001, "{:#010b} != {:#010b}", cpu.registers.b, 0b11000001);
     assert!(cpu.registers.get_carry());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_negative());
   }
 
   #[test]
@@ -3448,6 +3481,8 @@ use super::*;
 
     assert_eq!(cpu.registers.b, 0b01000001, "{:#010b} != {:#010b}", cpu.registers.b, 0b01000001);
     assert!(!cpu.registers.get_carry());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_negative());
   }
 
   #[test]
