@@ -784,10 +784,9 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let res = cpu.registers.$dest;
-            cpu.registers.half_carry(res & 0x0F == 0x0F);
-            cpu.registers.zero(res == 0xFF);
-            cpu.registers.negative(false);
-            let (res, _) = res.overflowing_add(1);
+            let carry = cpu.registers.get_carry();
+            let res = add_8(&mut cpu.registers, res, 1);
+            cpu.registers.carry(carry);
             cpu.registers.$dest = res;
           }
           eval
@@ -798,10 +797,9 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let address = wide!(cpu.registers, h, l);
             let res = cpu.mmu.read(address);
-            cpu.registers.half_carry(res & 0x0F == 0x0F);
-            cpu.registers.zero(res == 0xFF);
-            cpu.registers.negative(false);
-            let (res, _) = res.overflowing_add(1);
+            let carry = cpu.registers.get_carry();
+            let res = add_8(&mut cpu.registers, res, 1);
+            cpu.registers.carry(carry);
             cpu.mmu.write(address, res);
           }
           eval
@@ -2316,6 +2314,68 @@ use super::*;
     cpu.call(0x04);
 
     assert_eq!(cpu.registers.b, 0x69);
+    assert!(!cpu.registers.get_negative());
+    assert!(!cpu.registers.get_zero());
+  }
+
+  #[test]
+  fn test_inc_b_overflowing() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        pc: 0x0000,
+        b: 0xFF,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x04);
+
+    assert_eq!(cpu.registers.b, 0x00);
+    assert!(!cpu.registers.get_negative());
+    assert!(cpu.registers.get_zero());
+  }
+
+  #[test]
+  fn test_inc_b_half_carry() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        pc: 0x0000,
+        b: 0x0F,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x04);
+
+    assert_eq!(cpu.registers.b, 0x10);
+    assert!(!cpu.registers.get_negative());
+    assert!(!cpu.registers.get_zero());
+    assert!(cpu.registers.get_half_carry());
+  }
+
+  #[test]
+  fn test_inc_mem_hl() {
+    let mut mmu = MMU::new();
+    mmu.write(0x1234, 0x69 - 1);
+    let mut cpu = CPU { 
+      registers: Registers {
+        h: 0x12,
+        l: 0x34,
+        f: 0xF0,
+        ..Registers::new()
+      },
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x34);
+
+    let byte = cpu.mmu.read(0x1234);
+    assert_eq!(byte, 0x69);
+    assert!(!cpu.registers.get_negative());
+    assert!(!cpu.registers.get_zero());
   }
 
   #[test]
