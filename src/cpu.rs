@@ -2598,6 +2598,27 @@ use super::*;
   }
 
   #[test]
+  fn test_jr_nz_i8_not_zero_subtraction() {
+    let mut mmu = MMU::new();
+    mmu.write(0x0010, -5i8 as u8);
+    let mut registers = Registers {
+      pc: 0x0010,
+      ..Registers::new()
+    };
+    registers.zero(false);
+
+    let mut cpu = CPU { 
+      registers,
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x20);
+
+    assert_eq!(cpu.registers.pc, 0x0010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0010 - 5 + 1);
+  }
+
+  #[test]
   fn test_jr_z_i8_zero() {
     let mut mmu = MMU::new();
     mmu.write(0x0010, 0x05);
@@ -2616,6 +2637,27 @@ use super::*;
     cpu.call(0x28);
 
     assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
+  }
+
+  #[test]
+  fn test_jr_z_i8_zero_subtraction() {
+    let mut mmu = MMU::new();
+    mmu.write(0x0010, -5i8 as u8);
+    let mut registers = Registers {
+      pc: 0x0010,
+      ..Registers::new()
+    };
+    registers.zero(true);
+
+    let mut cpu = CPU { 
+      registers,
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x28);
+
+    assert_eq!(cpu.registers.pc, 0x0010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0010 - 5 + 1);
   }
 
   #[test]
