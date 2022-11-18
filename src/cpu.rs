@@ -2694,12 +2694,16 @@ use super::*;
     cpu.call(0x2F);
 
     assert_eq!(cpu.registers.a, 0b01010101);
+    assert!(cpu.registers.get_negative());
+    assert!(cpu.registers.get_half_carry());
   }
 
   #[test]
   fn test_ccf() {
     let mut registers = Registers::new();
     registers.carry(true);
+    registers.half_carry(true);
+    registers.negative(true);
     let mut cpu = CPU { 
       registers,
       ..CPU::new()
@@ -2708,6 +2712,26 @@ use super::*;
     cpu.call(0x3F);
 
     assert_eq!(cpu.registers.get_carry(), false);
+    assert!(!cpu.registers.get_negative());
+    assert!(!cpu.registers.get_half_carry());
+  }
+
+  #[test]
+  fn test_scf() {
+    let mut registers = Registers::new();
+    registers.carry(false);
+    registers.half_carry(true);
+    registers.negative(true);
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x37);
+
+    assert!(cpu.registers.get_carry());
+    assert!(!cpu.registers.get_negative());
+    assert!(!cpu.registers.get_half_carry());
   }
 
   #[test]
