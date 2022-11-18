@@ -1017,15 +1017,17 @@ impl CPU {
       (RLA) => {
         {
           fn eval(cpu: &mut CPU) {
-            let mut a = cpu.registers.a as u16;
+            let mut a = cpu.registers.a;
+            let carry_bit = 0x80 & a;
             a <<= 1;
+            if cpu.registers.get_carry() {
+              a |= 0x01;
+            }
             cpu.registers.negative(false);
             cpu.registers.half_carry(false);
-            let carry_bit = 0x100 & a;
-            cpu.registers.carry(carry_bit == 0x100);
-            a |= (carry_bit >> 8);
+            cpu.registers.carry(carry_bit == 0x80);
             cpu.registers.zero(a == 0);
-            cpu.registers.a = a as u8;
+            cpu.registers.a = a;
           }
           eval
         }
@@ -1036,7 +1038,9 @@ impl CPU {
             let mut a = cpu.registers.a;
             let carry_bit = a & 0x01;
             a >>= 1;
-            a |= (carry_bit << 7);
+            if cpu.registers.get_carry() {
+              a |= 0x80;
+            }
             cpu.registers.zero(a == 0);
             cpu.registers.negative(false);
             cpu.registers.half_carry(false);
@@ -2350,6 +2354,7 @@ use super::*;
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b11000000,
+        f: 0,
         ..Registers::new()
       },
       ..CPU::new()
@@ -2357,7 +2362,48 @@ use super::*;
 
     cpu.call(0x17);
 
+    assert_eq!(cpu.registers.a, 0b10000000, "{:#010b} != {:#010b}", cpu.registers.a, 0b10000000);
+    assert!(cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_rla_with_incoming_carry() {
+    let mut registers = Registers {
+      a: 0b11000000,
+      ..Registers::new()
+    };
+
+    registers.carry(true);
+
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x17);
+
     assert_eq!(cpu.registers.a, 0b10000001, "{:#010b} != {:#010b}", cpu.registers.a, 0b10000001);
+    assert!(cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_rla_without_outgoing_carry() {
+    let mut registers = Registers {
+      a: 0b01000000,
+      ..Registers::new()
+    };
+
+    registers.carry(true);
+
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x17);
+
+    assert_eq!(cpu.registers.a, 0b10000001, "{:#010b} != {:#010b}", cpu.registers.a, 0b10000001);
+    assert!(!cpu.registers.get_carry());
   }
 
   #[test]
@@ -2372,7 +2418,8 @@ use super::*;
 
     cpu.call(0x1F);
 
-    assert_eq!(cpu.registers.a, 0b11000000, "{:#010b} != {:#010b}", cpu.registers.a, 0b11000000);
+    assert_eq!(cpu.registers.a, 0b01000000, "{:#010b} != {:#010b}", cpu.registers.a, 0b11000000);
+    assert!(cpu.registers.get_carry());
   }
 
   #[test]
@@ -3333,6 +3380,7 @@ use super::*;
     assert!(cpu.registers.get_carry());
     assert!(!cpu.registers.get_half_carry());
     assert!(!cpu.registers.get_negative());
+    assert!(!cpu.registers.get_zero());
   }
 
   #[test]
@@ -3372,6 +3420,7 @@ use super::*;
     assert!(!cpu.registers.get_carry());
     assert!(!cpu.registers.get_half_carry());
     assert!(!cpu.registers.get_negative());
+    assert!(!cpu.registers.get_zero());
   }
   
   #[test]
