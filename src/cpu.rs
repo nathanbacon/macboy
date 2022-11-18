@@ -242,16 +242,15 @@ impl CPU {
         (SRA $reg:ident) => {
           {
             fn eval(cpu: &mut CPU) {
-              let mut dest = cpu.registers.$reg;
+              let dest = cpu.registers.$reg;
+              let mut dest = dest as i8;
               let carry = (0x01 & dest) == 0x01;
-              let msb = 0x80 | dest;
               dest >>= 1;
-              dest |= msb;
               cpu.registers.zero(dest == 0);
               cpu.registers.negative(false);
               cpu.registers.half_carry(false);
               cpu.registers.carry(carry);
-              cpu.registers.$reg = dest;
+              cpu.registers.$reg = dest as u8;
             }
             eval
           }
@@ -260,11 +259,10 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let dest_address = wide!(cpu.registers, h, l);
-              let mut dest = cpu.mmu.read(dest_address) as u16;
+              let dest = cpu.mmu.read(dest_address) as u16;
+              let mut dest = dest as i8;
               let carry = (0x01 & dest) == 0x01;
-              let msb = 0x80 | dest;
               dest >>= 1;
-              dest |= msb;
               cpu.registers.zero(dest == 0);
               cpu.registers.negative(false);
               cpu.registers.half_carry(false);
@@ -346,7 +344,7 @@ impl CPU {
               let is_set = is_set == test_bit;
               cpu.registers.zero(!is_set);
               cpu.registers.negative(false);
-              cpu.registers.half_carry(false);
+              cpu.registers.half_carry(true);
             }
             eval
           }
@@ -362,7 +360,7 @@ impl CPU {
               let is_set = is_set == test_bit;
               cpu.registers.zero(!is_set);
               cpu.registers.negative(false);
-              cpu.registers.half_carry(false);
+              cpu.registers.half_carry(true);
             }
             eval
           }
@@ -3468,8 +3466,352 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x20);
 
-    assert_eq!(cpu.registers.b, 0b10000000, "{:#010b} != {:#010b}", cpu.registers.b, 0b10000001);
+    assert_eq!(cpu.registers.b, 0b10000010, "{:#010b} != {:#010b}", cpu.registers.b, 0b10000010);
     assert!(cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_sla_b_no_carry() {
+    let mut registers = Registers {
+      b: 0b01000001,
+      ..Registers::new()
+    };
+
+    registers.carry(true);
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x20);
+
+    assert_eq!(cpu.registers.b, 0b10000010, "{:#010b} != {:#010b}", cpu.registers.b, 0b10000010);
+    assert!(!cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_sra_b() {
+    let mut registers = Registers {
+      b: 0b11000011,
+      ..Registers::new()
+    };
+
+    registers.carry(true);
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x28);
+
+    assert_eq!(cpu.registers.b, 0b11100001, "{:#010b} != {:#010b}", cpu.registers.b, 0b11100001);
+    assert!(cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_srl_b() {
+    let mut registers = Registers {
+      b: 0b11000011,
+      ..Registers::new()
+    };
+
+    registers.carry(true);
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x38);
+
+    assert_eq!(cpu.registers.b, 0b01100001, "{:#010b} != {:#010b}", cpu.registers.b, 0b01100001);
+    assert!(cpu.registers.get_carry());
+    assert!(!cpu.registers.get_zero());
+    assert!(!cpu.registers.get_negative());
+  }
+
+  #[test]
+  fn test_srl_b_no_carry() {
+    let mut registers = Registers {
+      b: 0b11000010,
+      ..Registers::new()
+    };
+
+    registers.carry(true);
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x38);
+
+    assert_eq!(cpu.registers.b, 0b01100001, "{:#010b} != {:#010b}", cpu.registers.b, 0b01100001);
+    assert!(!cpu.registers.get_carry());
+    assert!(!cpu.registers.get_zero());
+    assert!(!cpu.registers.get_negative());
+  }
+
+  #[test]
+  fn test_srl_b_zero() {
+    let mut registers = Registers {
+      b: 0b00000001,
+      ..Registers::new()
+    };
+
+    registers.carry(true);
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x38);
+
+    assert_eq!(cpu.registers.b, 0, "{:#010b} != {:#010b}", cpu.registers.b, 0);
+    assert!(cpu.registers.get_carry());
+    assert!(cpu.registers.get_zero());
+    assert!(!cpu.registers.get_negative());
+  }
+
+  #[test]
+  fn test_sra_b_no_carry() {
+    let mut registers = Registers {
+      b: 0b01000010,
+      ..Registers::new()
+    };
+
+    registers.carry(true);
+    let mut cpu = CPU { 
+      registers,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x28);
+
+    assert_eq!(cpu.registers.b, 0b00100001, "{:#010b} != {:#010b}", cpu.registers.b, 0b00100001);
+    assert!(!cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_swap_b() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0b11101000,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x30);
+
+    assert_eq!(cpu.registers.b, 0b10001110);
+    assert!(!cpu.registers.get_zero());
+    assert!(!cpu.registers.get_negative());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_swap_b_zero() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x30);
+
+    assert_eq!(cpu.registers.b, 0);
+    assert!(cpu.registers.get_zero());
+    assert!(!cpu.registers.get_negative());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_bit_0_b_hi() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0b10000001,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x40);
+
+    assert!(!cpu.registers.get_zero());
+    assert!(!cpu.registers.get_negative());
+    assert!(cpu.registers.get_half_carry());
+  }
+
+  #[test]
+  fn test_bit_0_b_lo() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0b10000000,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x40);
+
+    assert!(cpu.registers.get_zero());
+    assert!(!cpu.registers.get_negative());
+    assert!(cpu.registers.get_half_carry());
+  }
+
+  #[test]
+  fn test_bit_4_b_hi() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0b00010000,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x60);
+
+    assert!(!cpu.registers.get_zero());
+    assert!(!cpu.registers.get_negative());
+    assert!(cpu.registers.get_half_carry());
+  }
+
+  #[test]
+  fn test_bit_4_b_lo() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0b11101111,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x60);
+
+    assert!(cpu.registers.get_zero());
+    assert!(!cpu.registers.get_negative());
+    assert!(cpu.registers.get_half_carry());
+  }
+
+  #[test]
+  fn test_res_0_b() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0xFF,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0x80);
+
+    assert_eq!(cpu.registers.b, 0xFE);
+  }
+
+  #[test]
+  fn test_res_4_b() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0xFF,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0xA0);
+
+    assert_eq!(cpu.registers.b, 0xEF);
+  }
+
+  #[test]
+  fn test_res_4_hl() {
+    let mut mmu = MMU::new();
+    mmu.write(0x1234, 0xFF);
+    let mut cpu = CPU { 
+      registers: Registers {
+        h: 0x12,
+        l: 0x34,
+        ..Registers::new()
+      },
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0xA6);
+
+    let byte = cpu.mmu.read(0x1234);
+    assert_eq!(byte, 0xEF);
+  }
+
+  #[test]
+  fn test_set_0_b() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0x00,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0xC0);
+
+    assert_eq!(cpu.registers.b, 0x01);
+  }
+
+  #[test]
+  fn test_set_4_b() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        b: 0x00,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0xE0);
+
+    assert_eq!(cpu.registers.b, 0x10);
+  }
+
+  #[test]
+  fn test_set_4_hl() {
+    let mut mmu = MMU::new();
+    mmu.write(0x1234, 0x00);
+    let mut cpu = CPU { 
+      registers: Registers {
+        h: 0x12,
+        l: 0x34,
+        ..Registers::new()
+      },
+      mmu,
+      ..CPU::new()
+    }; 
+
+    cpu.call(0xCB);
+    cpu.call(0xE6);
+
+    let byte = cpu.mmu.read(0x1234);
+    assert_eq!(byte, 0x10);
   }
 
 }
