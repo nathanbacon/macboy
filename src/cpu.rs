@@ -706,18 +706,6 @@ impl CPU {
       res
     }
 
-    fn add_8(registers: &mut Registers, dest: u8, src: u8) -> u8 {
-      let (res, carry) = src.overflowing_add(dest);
-      let (_, half_carry) = (0xF0 | src).overflowing_add(0x0F & dest);
-
-      registers.negative(false);
-      registers.half_carry(half_carry);
-      registers.carry(carry);
-      let res = res as u8;
-      registers.zero(res == 0);
-      res
-    }
-
     fn add_8_flags(dest: u8, src: u8) -> (u8, bool, bool) {
       let (res, carry) = src.overflowing_add(dest);
       let (_, half_carry) = (0xF0 | src).overflowing_add(0x0F & dest);
@@ -1143,7 +1131,11 @@ impl CPU {
             let src = cpu.mmu.read(cpu.registers.pc);
             cpu.registers.pc += 1;
             let dest = cpu.registers.$dest as u8;
-            let res = add_8(&mut cpu.registers, dest, src);
+            let (res, carry, half_carry) = add_8_flags(dest, src);
+            cpu.registers.carry(carry);
+            cpu.registers.half_carry(half_carry);
+            cpu.registers.zero(res == 0);
+            cpu.registers.negative(false);
 
             cpu.registers.$dest = res;
           }
@@ -1155,13 +1147,11 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let src = cpu.registers.$src as u8;
             let dest = cpu.registers.$dest as u8;
-            let (res, carry) = src.overflowing_add(dest);
-            let (_, half_carry) = (0xF0 | src).overflowing_add(0x0F & dest);
+            let (res, carry, half_carry) = add_8_flags(dest, src);
 
             cpu.registers.negative(false);
             cpu.registers.half_carry(half_carry);
             cpu.registers.carry(carry);
-            let res = res as u8;
             cpu.registers.zero(res == 0);
             cpu.registers.$dest = res;
           }
@@ -1269,7 +1259,10 @@ impl CPU {
             let src = wide!(cpu.registers, h, l);
             let src = four_cycle_memory_access!(cpu.registers, cpu.mmu, src);
             let dest = cpu.registers.$dest;
-            let res = add_8(&mut cpu.registers, dest, src);
+            let (res, carry, half_carry) = add_8_flags(dest, src);
+            cpu.registers.zero(res == 0);
+            cpu.registers.carry(carry);
+            cpu.registers.half_carry(half_carry);
             cpu.registers.$dest = res;
           }
           eval
