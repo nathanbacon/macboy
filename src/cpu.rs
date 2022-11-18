@@ -718,6 +718,14 @@ impl CPU {
       res
     }
 
+    fn add_8_flags(dest: u8, src: u8) -> (u8, bool, bool) {
+      let (res, carry) = src.overflowing_add(dest);
+      let (_, half_carry) = (0xF0 | src).overflowing_add(0x0F & dest);
+
+      let res = res as u8;
+      (res, carry, half_carry)
+    }
+
     fn sbc_8(registers: &mut Registers, dest: u8, src: u8) -> u8 {
       let carry = (registers.f >> 4) & 0x01;
       let (src, _) = src.overflowing_add(carry);
@@ -784,9 +792,10 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let res = cpu.registers.$dest;
-            let carry = cpu.registers.get_carry();
-            let res = add_8(&mut cpu.registers, res, 1);
-            cpu.registers.carry(carry);
+            let (res, _, half_carry) = add_8_flags(res, 1);
+            cpu.registers.negative(false);
+            cpu.registers.half_carry(half_carry);
+            cpu.registers.zero(res == 0);
             cpu.registers.$dest = res;
           }
           eval
@@ -797,9 +806,10 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let address = wide!(cpu.registers, h, l);
             let res = cpu.mmu.read(address);
-            let carry = cpu.registers.get_carry();
-            let res = add_8(&mut cpu.registers, res, 1);
-            cpu.registers.carry(carry);
+            let (res, _, half_carry) = add_8_flags(res, 1);
+            cpu.registers.negative(false);
+            cpu.registers.half_carry(half_carry);
+            cpu.registers.zero(res == 0);
             cpu.mmu.write(address, res);
           }
           eval
