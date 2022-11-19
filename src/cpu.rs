@@ -694,16 +694,12 @@ impl CPU {
   }
 
   pub fn build() -> Vec<fn(&mut CPU)> {
-    fn sub_8(registers: &mut Registers, dest: u8, src: u8) -> u8 {
-      let (res, carry) = dest.overflowing_sub(src);
-      let (_, half_carry) = (dest & 0x0F).overflowing_sub(0x0F & src);
 
-      registers.negative(true);
-      registers.half_carry(!half_carry);
-      registers.carry(!carry);
-      let res = res as u8;
-      registers.zero(res == 0);
-      res
+    fn sub_8_flags(dest: u8, src: u8) -> (u8, bool, bool) {
+      let (res, carry) = dest.overflowing_sub(src);
+      let (_, half_carry) = (0x0F & dest).overflowing_sub(0x0F & src);
+
+      (res, carry, half_carry)
     }
 
     fn add_8_flags(dest: u8, src: u8) -> (u8, bool, bool) {
@@ -1164,7 +1160,11 @@ impl CPU {
             let src = four_cycle_memory_access!(cpu.registers, cpu.mmu, cpu.registers.pc);
             cpu.registers.pc += 1;
             let dest = cpu.registers.a;
-            let res = sub_8(&mut cpu.registers, dest, src);
+            let (res, carry, half_carry) = sub_8_flags(dest, src);
+            cpu.registers.carry(carry);
+            cpu.registers.half_carry(half_carry);
+            cpu.registers.negative(true);
+            cpu.registers.zero(res == 0);
 
             cpu.registers.a = res;
           }
@@ -1176,7 +1176,11 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let src = cpu.registers.$src as u8;
             let dest = cpu.registers.a;
-            let res = sub_8(&mut cpu.registers, dest, src);
+            let (res, carry, half_carry) = sub_8_flags(dest, src);
+            cpu.registers.carry(carry);
+            cpu.registers.half_carry(half_carry);
+            cpu.registers.negative(true);
+            cpu.registers.zero(res == 0);
 
             cpu.registers.a = res;
           }
@@ -1189,7 +1193,11 @@ impl CPU {
             let src = wide!(cpu.registers, h, l);
             let src = cpu.mmu.read(src);
             let dest = cpu.registers.a;
-            let res = sub_8(&mut cpu.registers, dest, src);
+            let (res, carry, half_carry) = sub_8_flags(dest, src);
+            cpu.registers.carry(carry);
+            cpu.registers.half_carry(half_carry);
+            cpu.registers.negative(true);
+            cpu.registers.zero(res == 0);
             cpu.registers.a = res;
           }
           eval
@@ -2943,8 +2951,8 @@ use super::*;
     cpu.call(0x90);
 
     assert_eq!(cpu.registers.a, 15);
-    assert!(!cpu.registers.get_half_carry());
-    assert!(cpu.registers.get_carry());
+    assert!(cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_carry());
   }
 
   #[test]
@@ -2960,9 +2968,25 @@ use super::*;
 
     cpu.call(0x90);
 
-    //assert_eq!(cpu.registers.a, 15);
+    assert!(!cpu.registers.get_half_carry());
+    assert!(cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_sub_a_b_both_carry() {
+    let mut cpu = CPU { 
+      registers: Registers {
+        a: 0b00000000,
+        b: 0b00001000,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x90);
+
     assert!(cpu.registers.get_half_carry());
-    assert!(!cpu.registers.get_carry());
+    assert!(cpu.registers.get_carry());
   }
 
   #[test]
