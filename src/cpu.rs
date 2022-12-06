@@ -1178,7 +1178,7 @@ impl CPU {
       (SUB A, u8) => {
         {
           fn eval(cpu: &mut CPU) {
-            let src = four_cycle_memory_access!(cpu.registers, cpu.mmu, cpu.registers.pc);
+            let src = cpu.read_mem(cpu.registers.pc);
             cpu.registers.pc += 1;
             let dest = cpu.registers.a;
             let (res, carry, half_carry) = sub_8_flags(dest, src);
@@ -1227,7 +1227,7 @@ impl CPU {
       (SBC A, u8) => {
         {
           fn eval(cpu: &mut CPU) {
-            let src = four_cycle_memory_access!(cpu.registers, cpu.mmu, cpu.registers.pc);
+            let src = cpu.read_mem(cpu.registers.pc);
             cpu.registers.pc += 1;
             let dest = cpu.registers.a;
             let res = sbc_8(&mut cpu.registers, dest, src);
@@ -1262,7 +1262,7 @@ impl CPU {
       (ADC A, u8) => {
         {
           fn eval(cpu: &mut CPU) {
-            let src = four_cycle_memory_access!(cpu.registers, cpu.mmu, cpu.registers.pc);
+            let src = cpu.read_mem(cpu.registers.pc);
             cpu.registers.pc += 1;
             let dest = cpu.registers.a;
             let res = adc_8(&mut cpu.registers, dest, src);
@@ -1286,7 +1286,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src = wide!(cpu.registers, h, l);
-            let src = four_cycle_memory_access!(cpu.registers, cpu.mmu, src);
+            let src = cpu.read_mem(src);
             let dest = cpu.registers.$dest;
             let (res, carry, half_carry) = add_8_flags(dest, src);
             cpu.registers.zero(res == 0);
@@ -2943,6 +2943,7 @@ use super::*;
 
     cpu.call(0x86);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.a, 0x69);
   }
 
@@ -2960,6 +2961,7 @@ use super::*;
 
     cpu.call(0x85);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0b00010010);
     assert!(cpu.registers.get_carry());
     assert!(cpu.registers.get_half_carry());
@@ -2979,6 +2981,7 @@ use super::*;
 
     cpu.call(0x85);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0b00000010);
     assert!(!cpu.registers.get_carry());
     assert!(!cpu.registers.get_half_carry());
@@ -3002,6 +3005,7 @@ use super::*;
 
     cpu.call(0x88);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0b10010011, "{:#010b} != {:#010b}", cpu.registers.a, 0b10010011);
     assert!(cpu.registers.get_half_carry());
     assert!(!cpu.registers.get_carry());
@@ -3020,6 +3024,7 @@ use super::*;
 
     cpu.call(0x90);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0x36);
   }
 
