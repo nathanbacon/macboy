@@ -7,6 +7,7 @@ pub struct CPU {
   extended_table: Vec<fn(&mut CPU)>,
   interrupt_enabled: bool,
   prefix_mode: bool,
+  ticks: u64
 }
 
 macro_rules! wide {
@@ -49,7 +50,20 @@ impl CPU {
       extended_table: CPU::build_extended_table(),
       interrupt_enabled: true,
       prefix_mode: false,
+      ticks: 0,
     }
+  }
+
+  pub fn read_mem(&mut self, address: u16) -> u8 {
+    self.ticks += 4;
+    self.mmu.read(address)
+  }
+
+  pub fn read_mem_16(&mut self, address: u16) -> u16 {
+    self.ticks += 4;
+    let lower = self.mmu.read(address) as u16;
+    let upper = self.mmu.read(address + 1) as u16; 
+    (upper << 8) | lower
   }
 
   pub fn build_extended_table() -> Vec<fn(&mut CPU)> {
@@ -75,7 +89,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let dest_address = wide!(cpu.registers, h, l);
-              let mut dest = cpu.mmu.read(dest_address) as u16;
+              let mut dest = cpu.read_mem(dest_address) as u16;
               dest <<= 1;
               cpu.registers.zero(dest == 0);
               cpu.registers.negative(false);
@@ -112,7 +126,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let dest_address = wide!(cpu.registers, h, l);
-              let mut dest = cpu.mmu.read(dest_address) as u16;
+              let mut dest = cpu.read_mem(dest_address) as u16;
               let mut carry_bit = dest & 0x01;
               cpu.registers.carry(carry_bit == 0x01);
               dest >>= 1;
@@ -151,7 +165,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let dest_address = wide!(cpu.registers, h, l);
-              let mut dest = cpu.mmu.read(dest_address) as u16;
+              let mut dest = cpu.read_mem(dest_address) as u16;
               dest <<= 1;
               if cpu.registers.get_carry() {
                 dest |= 0x01;
@@ -191,7 +205,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let dest_address = wide!(cpu.registers, h, l);
-              let mut dest = cpu.mmu.read(dest_address);
+              let mut dest = cpu.read_mem(dest_address);
               let carry_bit = dest & 0x01;
               dest >>= 1;
               if cpu.registers.get_carry() {
@@ -226,7 +240,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let dest_address = wide!(cpu.registers, h, l);
-              let mut dest = cpu.mmu.read(dest_address) as u16;
+              let mut dest = cpu.read_mem(dest_address) as u16;
               dest <<= 1;
               cpu.registers.zero(dest == 0);
               cpu.registers.negative(false);
@@ -259,7 +273,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let dest_address = wide!(cpu.registers, h, l);
-              let dest = cpu.mmu.read(dest_address) as u16;
+              let dest = cpu.read_mem(dest_address) as u16;
               let mut dest = dest as i8;
               let carry = (0x01 & dest) == 0x01;
               dest >>= 1;
@@ -292,7 +306,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let dest_address = wide!(cpu.registers, h, l);
-              let mut dest = cpu.mmu.read(dest_address);
+              let mut dest = cpu.read_mem(dest_address);
               let carry = (0x01 & dest) == 0x01;
               dest >>= 1;
               cpu.registers.zero(dest == 0);
@@ -323,7 +337,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let address = wide!(cpu.registers, h, l);
-              let byte = cpu.mmu.read(address);
+              let byte = cpu.read_mem(address);
               let res = (byte >> 4) | (byte << 4);
               cpu.registers.zero(res == 0);
               cpu.registers.negative(false);
@@ -353,7 +367,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let address = wide!(cpu.registers, h, l);
-              let byte = cpu.mmu.read(address);
+              let byte = cpu.read_mem(address);
               let bit_num = $bit as u8;
               let test_bit = 0x01 << bit_num;
               let is_set = byte & test_bit;
@@ -382,7 +396,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let address = wide!(cpu.registers, h, l);
-              let mut byte = cpu.mmu.read(address);
+              let mut byte = cpu.read_mem(address);
               let bit_num = $bit as u8;
               let bit = 0x01 << bit_num;
               let mask = 0xFF ^ bit;
@@ -408,7 +422,7 @@ impl CPU {
           {
             fn eval(cpu: &mut CPU) {
               let address = wide!(cpu.registers, h, l);
-              let mut byte = cpu.mmu.read(address);
+              let mut byte = cpu.read_mem(address);
               let bit_num = $bit as u8;
               let bit = 0x01 << bit_num;
               byte |= bit;
@@ -789,7 +803,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let address = wide!(cpu.registers, h, l);
-            let res = cpu.mmu.read(address);
+            let res = cpu.read_mem(address);
             let (res, _, half_carry) = add_8_flags(res, 1);
             cpu.registers.negative(false);
             cpu.registers.half_carry(half_carry);
@@ -816,7 +830,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let address = wide!(cpu.registers, h, l);
-            let res = cpu.mmu.read(address);
+            let res = cpu.read_mem(address);
             cpu.registers.half_carry(res & 0x0F == 0);
             cpu.registers.zero(res == 0x01);
             cpu.registers.negative(true);
@@ -838,7 +852,7 @@ impl CPU {
       (LD [$dest_hi:ident $dest_lo:ident], u16) => {
         {
           fn eval(cpu: &mut CPU) {
-            let v = cpu.mmu.read_16_bit_immediate(cpu.registers.pc);
+            let v = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
             wide!(cpu.registers, $dest_hi, $dest_lo, v);
           }
@@ -848,7 +862,7 @@ impl CPU {
       (LD sp, u16) => {
         {
           fn eval(cpu: &mut CPU) {
-            let v = cpu.mmu.read_16_bit_immediate(cpu.registers.pc);
+            let v = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
             wide!(cpu.registers, s, p, v);
           }
@@ -869,7 +883,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let address = wide!(cpu.registers, h, l);
-            let v = cpu.mmu.read(address);
+            let v = cpu.read_mem(address);
             cpu.registers.pc += 1;
             cpu.registers.$dest = v;
           }
@@ -887,7 +901,7 @@ impl CPU {
       (LD (u16), SP) => {
         {
           fn eval(cpu: &mut CPU) {
-            let dest_address = cpu.mmu.read_16_bit_immediate(cpu.registers.pc);
+            let dest_address = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
             let sp = wide!(cpu.registers, s, p);
             let lower = (sp & 0x00FF) as u8;
@@ -901,9 +915,9 @@ impl CPU {
       (LD A, (u16)) => {
         {
           fn eval(cpu: &mut CPU) {
-            let src_address = cpu.mmu.read_16_bit_immediate(cpu.registers.pc);
+            let src_address = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
-            let src = cpu.mmu.read(src_address);
+            let src = cpu.read_mem(src_address);
             cpu.registers.a = src;
           }
           eval
@@ -912,7 +926,7 @@ impl CPU {
       (LD (u16), A) => {
         {
           fn eval(cpu: &mut CPU) {
-            let dest_address = cpu.mmu.read_16_bit_immediate(cpu.registers.pc);
+            let dest_address = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
             let src = cpu.registers.a;
             cpu.mmu.write(dest_address, src);
@@ -924,7 +938,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src = cpu.registers.pc;
-            let src = cpu.mmu.read(src);
+            let src = cpu.read_mem(src);
             cpu.registers.pc += 1;
             let dest_address = wide!(cpu.registers, h, l);
             cpu.mmu.write(dest_address, src);
@@ -952,7 +966,7 @@ impl CPU {
             cpu.registers.pc += 1;
             let src = immed as u16;
             let src = 0xFF00 | src;
-            let src = cpu.mmu.read(src);
+            let src = cpu.read_mem(src);
 
             cpu.registers.a = src;
           }
@@ -973,7 +987,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src = 0xFF00 | (cpu.registers.c as u16);
-            let src = cpu.mmu.read(src);
+            let src = cpu.read_mem(src);
 
             cpu.registers.a = src;
           }
@@ -1191,7 +1205,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src = wide!(cpu.registers, h, l);
-            let src = cpu.mmu.read(src);
+            let src = cpu.read_mem(src);
             let dest = cpu.registers.a;
             let (res, carry, half_carry) = sub_8_flags(dest, src);
             cpu.registers.carry(carry);
@@ -1230,7 +1244,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src = wide!(cpu.registers, h, l);
-            let src = cpu.mmu.read(src);
+            let src = cpu.read_mem(src);
             let dest = cpu.registers.a;
             let res = sbc_8(&mut cpu.registers, dest, src);
             cpu.registers.a = res;
@@ -1280,7 +1294,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src = wide!(cpu.registers, h, l);
-            let src = cpu.mmu.read(src);
+            let src = cpu.read_mem(src);
             let dest = cpu.registers.a;
             let res = adc_8(&mut cpu.registers, dest, src);
             cpu.registers.a = res;
@@ -1325,7 +1339,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src = wide!(cpu.registers, h, l);
-            let src = cpu.mmu.read(src);
+            let src = cpu.read_mem(src);
             let mut a = cpu.registers.a;
             a &= src;
             cpu.registers.a = a;
@@ -1375,7 +1389,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src = wide!(cpu.registers, h, l);
-            let src = cpu.mmu.read(src);
+            let src = cpu.read_mem(src);
             let mut a = cpu.registers.a;
             a ^= src;
             cpu.registers.a = a;
@@ -1418,7 +1432,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src = wide!(cpu.registers, h, l);
-            let src = cpu.mmu.read(src);
+            let src = cpu.read_mem(src);
             let dest = cpu.registers.a;
             let res = or_8(&mut cpu.registers, dest, src);
             cpu.registers.a = res;
@@ -1464,7 +1478,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src = wide!(cpu.registers, h, l);
-            let src = cpu.mmu.read(src);
+            let src = cpu.read_mem(src);
             let dest = cpu.registers.a;
             let (res, carry) = dest.overflowing_sub(src);
             let (_, half_carry) = (0x0F & dest).overflowing_sub(0x0F & src);
@@ -1481,7 +1495,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let src_addr = wide!(cpu.registers, $src_hi, $src_lo);
-            let src = cpu.mmu.read(src_addr);
+            let src = cpu.read_mem(src_addr);
             cpu.registers.$dest = src;
           }
           eval
@@ -1616,7 +1630,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let hl = wide!(cpu.registers, h, l);
-            let v = cpu.mmu.read(hl);
+            let v = cpu.read_mem(hl);
             cpu.registers.a = v;
             wide!(cpu.registers, h, l, hl + 1);
           }
@@ -1627,7 +1641,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let hl = wide!(cpu.registers, h, l);
-            let v = cpu.mmu.read(hl);
+            let v = cpu.read_mem(hl);
             cpu.registers.a = v;
             wide!(cpu.registers, h, l, hl - 1);
           }
@@ -1683,9 +1697,9 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let mut sp = wide!(cpu.registers, s, p);
-            let lo = cpu.mmu.read(sp);
+            let lo = cpu.read_mem(sp);
             sp += 1;
-            let hi = cpu.mmu.read(sp);
+            let hi = cpu.read_mem(sp);
             sp += 1;
             cpu.registers.$src_hi = hi;
             cpu.registers.$src_lo = lo;
@@ -1713,9 +1727,9 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let mut sp = wide!(cpu.registers, s, p);
-            let lo = cpu.mmu.read(sp) as u16;
+            let lo = cpu.read_mem(sp) as u16;
             sp += 1;
-            let hi = cpu.mmu.read(sp) as u16;
+            let hi = cpu.read_mem(sp) as u16;
             let hi = hi << 8;
             sp += 1;
             let pc = hi | lo;
@@ -1731,9 +1745,9 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let mut sp = wide!(cpu.registers, s, p);
-            let lo = cpu.mmu.read(sp) as u16;
+            let lo = cpu.read_mem(sp) as u16;
             sp += 1;
-            let hi = cpu.mmu.read(sp) as u16;
+            let hi = cpu.read_mem(sp) as u16;
             let hi = hi << 8;
             sp += 1;
             let pc = hi | lo;
@@ -1771,9 +1785,9 @@ impl CPU {
             }
 
             let mut sp = wide!(cpu.registers, s, p);
-            let lo = cpu.mmu.read(sp) as u16;
+            let lo = cpu.read_mem(sp) as u16;
             sp += 1;
-            let hi = cpu.mmu.read(sp) as u16;
+            let hi = cpu.read_mem(sp) as u16;
             let hi = hi << 8;
             sp += 1;
             let pc = hi | lo;
@@ -1795,9 +1809,9 @@ impl CPU {
             }
 
             let mut pc = cpu.registers.pc;
-            let lo = cpu.mmu.read(pc) as u16;
+            let lo = cpu.read_mem(pc) as u16;
             pc += 1;
-            let mut hi = cpu.mmu.read(pc) as u16;
+            let mut hi = cpu.read_mem(pc) as u16;
             hi = hi << 8;
             let pc = hi | lo;
 
@@ -1811,9 +1825,9 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             // read immediate into call_address
             let mut pc = cpu.registers.pc;
-            let lo = cpu.mmu.read(pc) as u16;
+            let lo = cpu.read_mem(pc) as u16;
             pc += 1;
-            let mut hi = cpu.mmu.read(pc) as u16;
+            let mut hi = cpu.read_mem(pc) as u16;
             pc += 1;
             hi = hi << 8;
             let call_address = hi | lo;
@@ -1844,9 +1858,9 @@ impl CPU {
 
             // read immediate into call_address
             let mut pc = cpu.registers.pc;
-            let lo = cpu.mmu.read(pc) as u16;
+            let lo = cpu.read_mem(pc) as u16;
             pc += 1;
-            let mut hi = cpu.mmu.read(pc) as u16;
+            let mut hi = cpu.read_mem(pc) as u16;
             hi = hi << 8;
             let call_address = hi | lo;
             cpu.registers.pc = call_address;
@@ -1869,9 +1883,9 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let mut pc = cpu.registers.pc;
-            let lo = cpu.mmu.read(pc) as u16;
+            let lo = cpu.read_mem(pc) as u16;
             pc += 1;
-            let mut hi = cpu.mmu.read(pc) as u16;
+            let mut hi = cpu.read_mem(pc) as u16;
             hi = hi << 8;
             let pc = hi | lo;
 
