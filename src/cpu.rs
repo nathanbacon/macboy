@@ -2880,6 +2880,49 @@ use super::*;
 
     assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0x69);
+    assert!(!cpu.registers.get_zero())
+  }
+
+  #[test]
+  fn test_add_a_b_half_carry() {
+
+    let mut cpu = CPU { 
+      registers: Registers {
+        a: 0x08,
+        b: 0x08,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x80);
+
+    assert_eq!(cpu.ticks, 4);
+    assert_eq!(cpu.registers.a, 0x10);
+    assert!(!cpu.registers.get_zero());
+    assert!(cpu.registers.get_half_carry());
+    assert!(!cpu.registers.get_carry());
+  }
+
+  #[test]
+  fn test_add_a_b_carry() {
+
+    let mut cpu = CPU { 
+      registers: Registers {
+        a: 0x80,
+        b: 0x80,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x80);
+
+    assert_eq!(cpu.ticks, 4);
+    assert_eq!(cpu.registers.a, 0x00);
+    assert!(cpu.registers.get_zero());
+    assert!(!cpu.registers.get_half_carry());
+    assert!(cpu.registers.get_carry());
   }
 
   #[test]
