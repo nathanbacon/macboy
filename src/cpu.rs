@@ -1543,7 +1543,7 @@ impl CPU {
       (JR NZ, i8) => {
         {
           fn eval(cpu: &mut CPU) {
-            let immed = cpu.mmu.read(cpu.registers.pc) as i8;
+            let immed = cpu.read_mem(cpu.registers.pc) as i8;
             cpu.registers.pc += 1;
             let not_zero = !cpu.registers.get_zero();
             if !not_zero {
@@ -1554,6 +1554,7 @@ impl CPU {
             let signed_pc = cpu.registers.pc as i16;
             let new_pc = signed_pc + immed;
             cpu.registers.pc = (new_pc as u16);
+            cpu.ticks += 4;
           }
           eval
         }
@@ -1561,7 +1562,7 @@ impl CPU {
       (JR NC, i8) => {
         {
           fn eval(cpu: &mut CPU) {
-            let immed = cpu.mmu.read(cpu.registers.pc) as i8;
+            let immed = cpu.read_mem(cpu.registers.pc) as i8;
             cpu.registers.pc += 1;
             let not_carry = !cpu.registers.get_carry();
             if !not_carry {
@@ -1572,6 +1573,7 @@ impl CPU {
             let signed_pc = cpu.registers.pc as i16;
             let new_pc = signed_pc + immed;
             cpu.registers.pc = (new_pc as u16);
+            cpu.ticks += 4;
           }
           eval
         }
@@ -1579,7 +1581,7 @@ impl CPU {
       (JR Z, i8) => {
         {
           fn eval(cpu: &mut CPU) {
-            let immed = cpu.mmu.read(cpu.registers.pc) as i8;
+            let immed = cpu.read_mem(cpu.registers.pc) as i8;
             cpu.registers.pc += 1;
             let zero = cpu.registers.get_zero();
             if !zero {
@@ -1590,6 +1592,7 @@ impl CPU {
             let signed_pc = cpu.registers.pc as i16;
             let new_pc = signed_pc + immed;
             cpu.registers.pc = (new_pc as u16);
+            cpu.ticks += 4;
           }
           eval
         }
@@ -1608,6 +1611,7 @@ impl CPU {
             let signed_pc = cpu.registers.pc as i16;
             let new_pc = signed_pc + immed;
             cpu.registers.pc = (new_pc as u16);
+            cpu.ticks += 4;
           }
           eval
         }
@@ -2690,6 +2694,7 @@ use super::*;
 
     cpu.call(0x20);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.pc, 0x0011, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0011);
   }
 
@@ -2711,6 +2716,7 @@ use super::*;
 
     cpu.call(0x20);
 
+    assert_eq!(cpu.ticks, 12);
     assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
   }
 
@@ -2732,6 +2738,7 @@ use super::*;
 
     cpu.call(0x20);
 
+    assert_eq!(cpu.ticks, 12);
     assert_eq!(cpu.registers.pc, 0x0010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0010 - 5 + 1);
   }
 
@@ -2753,6 +2760,7 @@ use super::*;
 
     cpu.call(0x28);
 
+    assert_eq!(cpu.ticks, 12);
     assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
   }
 
@@ -2774,6 +2782,7 @@ use super::*;
 
     cpu.call(0x28);
 
+    assert_eq!(cpu.ticks, 12);
     assert_eq!(cpu.registers.pc, 0x0010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0010 - 5 + 1);
   }
 
@@ -2795,6 +2804,7 @@ use super::*;
 
     cpu.call(0x28);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.pc, 0x0011, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0011);
   }
 
@@ -2810,6 +2820,7 @@ use super::*;
 
     cpu.call(0x2F);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0b01010101);
     assert!(cpu.registers.get_negative());
     assert!(cpu.registers.get_half_carry());
@@ -2828,6 +2839,7 @@ use super::*;
 
     cpu.call(0x3F);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.get_carry(), false);
     assert!(!cpu.registers.get_negative());
     assert!(!cpu.registers.get_half_carry());
@@ -2846,6 +2858,7 @@ use super::*;
 
     cpu.call(0x37);
 
+    assert_eq!(cpu.ticks, 4);
     assert!(cpu.registers.get_carry());
     assert!(!cpu.registers.get_negative());
     assert!(!cpu.registers.get_half_carry());
@@ -2865,6 +2878,7 @@ use super::*;
 
     cpu.call(0x80);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0x69);
   }
 
