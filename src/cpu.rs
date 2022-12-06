@@ -14,9 +14,10 @@ macro_rules! wide {
     ($reg:expr, $hi:ident, $lo:ident) => {
         (($reg.$hi as u16) << 8) | ($reg.$lo as u16) 
     };
-    ($reg:expr, $hi:ident, $lo:ident, $v:expr) => {
+    ($reg:expr, $hi:ident, $lo:ident, $v:expr, $cpu:expr) => {
       $reg.$hi = ($v >> 8) as u8;
       $reg.$lo = $v as u8;
+      $cpu.ticks += 4;
     };
 }
 
@@ -60,10 +61,15 @@ impl CPU {
   }
 
   pub fn read_mem_16(&mut self, address: u16) -> u16 {
-    self.ticks += 4;
+    self.ticks += 8;
     let lower = self.mmu.read(address) as u16;
     let upper = self.mmu.read(address + 1) as u16; 
     (upper << 8) | lower
+  }
+
+  pub fn write_mem(&mut self, address: u16, value: u8) {
+    self.ticks += 4;
+    self.mmu.write(address, value);
   }
 
   pub fn build_extended_table() -> Vec<fn(&mut CPU)> {
@@ -98,7 +104,7 @@ impl CPU {
               cpu.registers.carry(carry_bit == 0x01);
               dest |= carry_bit;
               let dest = dest as u8;
-              cpu.mmu.write(dest_address, dest);
+              cpu.write_mem(dest_address, dest);
             }
             eval
           }
@@ -137,7 +143,7 @@ impl CPU {
               carry_bit <<= 7;
               dest |= carry_bit;
               let dest = dest as u8;
-              cpu.mmu.write(dest_address, dest);
+              cpu.write_mem(dest_address, dest);
             }
             eval
           }
@@ -178,7 +184,7 @@ impl CPU {
               let carry_bit = carry_bit >> 8;
               dest |= carry_bit;
               let dest = dest as u8;
-              cpu.mmu.write(dest_address, dest);
+              cpu.write_mem(dest_address, dest);
             }
             eval
           }
@@ -215,7 +221,7 @@ impl CPU {
               cpu.registers.negative(false);
               cpu.registers.half_carry(false);
               cpu.registers.carry(carry_bit == 0x01);
-              cpu.mmu.write(dest_address, dest);
+              cpu.write_mem(dest_address, dest);
             }
             eval
           }
@@ -248,7 +254,7 @@ impl CPU {
               let carry_bit = 0x100 & dest;
               cpu.registers.carry(carry_bit == 0x100);
               let dest = dest as u8;
-              cpu.mmu.write(dest_address, dest);
+              cpu.write_mem(dest_address, dest);
             }
             eval
           }
@@ -282,7 +288,7 @@ impl CPU {
               cpu.registers.half_carry(false);
               cpu.registers.carry(carry);
               let dest = dest as u8;
-              cpu.mmu.write(dest_address, dest);
+              cpu.write_mem(dest_address, dest);
             }
             eval
           }
@@ -314,7 +320,7 @@ impl CPU {
               cpu.registers.half_carry(false);
               cpu.registers.carry(carry);
               let dest = dest as u8;
-              cpu.mmu.write(dest_address, dest);
+              cpu.write_mem(dest_address, dest);
             }
             eval
           }
@@ -343,7 +349,7 @@ impl CPU {
               cpu.registers.negative(false);
               cpu.registers.half_carry(false);
               cpu.registers.carry(false);
-              cpu.mmu.write(address, byte);
+              cpu.write_mem(address, byte);
             }
             eval
           }
@@ -401,7 +407,7 @@ impl CPU {
               let bit = 0x01 << bit_num;
               let mask = 0xFF ^ bit;
               byte &= mask;
-              cpu.mmu.write(address, byte);
+              cpu.write_mem(address, byte);
             }
             eval
           }
@@ -426,7 +432,7 @@ impl CPU {
               let bit_num = $bit as u8;
               let bit = 0x01 << bit_num;
               byte |= bit;
-              cpu.mmu.write(address, byte);
+              cpu.write_mem(address, byte);
             }
             eval
           }
@@ -781,7 +787,7 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let res = wide!(cpu.registers, $dest_hi, $dest_lo);
             let (res, _) = res.overflowing_add(1);
-            wide!(cpu.registers, $dest_hi, $dest_lo, res);
+            wide!(cpu.registers, $dest_hi, $dest_lo, res, cpu);
           }
           eval
         }
@@ -808,7 +814,7 @@ impl CPU {
             cpu.registers.negative(false);
             cpu.registers.half_carry(half_carry);
             cpu.registers.zero(res == 0);
-            cpu.mmu.write(address, res);
+            cpu.write_mem(address, res);
           }
           eval
         }
@@ -835,7 +841,7 @@ impl CPU {
             cpu.registers.zero(res == 0x01);
             cpu.registers.negative(true);
             let (res, _) = res.overflowing_sub(1);
-            cpu.mmu.write(address, res);
+            cpu.write_mem(address, res);
           }
           eval
         }
@@ -844,7 +850,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             let hl = wide!(cpu.registers, h, l);
-            wide!(cpu.registers, s, p, hl);
+            wide!(cpu.registers, s, p, hl, cpu);
           }
           eval
         }
@@ -854,7 +860,8 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let v = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
-            wide!(cpu.registers, $dest_hi, $dest_lo, v);
+            wide!(cpu.registers, $dest_hi, $dest_lo, v, cpu);
+            cpu.ticks -= 4; // compensate for overlapping register write w/ mem read
           }
           eval
         }
@@ -864,7 +871,7 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let v = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
-            wide!(cpu.registers, s, p, v);
+            wide!(cpu.registers, s, p, v, cpu);
           }
           eval
         }
@@ -906,8 +913,8 @@ impl CPU {
             let sp = wide!(cpu.registers, s, p);
             let lower = (sp & 0x00FF) as u8;
             let upper = (sp >> 8) as u8;
-            cpu.mmu.write(dest_address, lower);
-            cpu.mmu.write(dest_address + 1, upper);
+            cpu.write_mem(dest_address, lower);
+            cpu.write_mem(dest_address + 1, upper);
           }
           eval
         }
@@ -929,7 +936,7 @@ impl CPU {
             let dest_address = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
             let src = cpu.registers.a;
-            cpu.mmu.write(dest_address, src);
+            cpu.write_mem(dest_address, src);
           }
           eval
         }
@@ -941,7 +948,7 @@ impl CPU {
             let src = cpu.read_mem(src);
             cpu.registers.pc += 1;
             let dest_address = wide!(cpu.registers, h, l);
-            cpu.mmu.write(dest_address, src);
+            cpu.write_mem(dest_address, src);
           }
           eval
         }
@@ -954,7 +961,7 @@ impl CPU {
             cpu.registers.pc += 1;
             let immed = immed as u16;
             let dest_address = 0xFF00 | immed;
-            cpu.mmu.write(dest_address, src);
+            cpu.write_mem(dest_address, src);
           }
           eval
         }
@@ -978,7 +985,7 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let src = cpu.registers.a;
             let dest_address = 0xFF00 | (cpu.registers.c as u16);
-            cpu.mmu.write(dest_address, src);
+            cpu.write_mem(dest_address, src);
           }
           eval
         }
@@ -999,7 +1006,7 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let dest_address = wide!(cpu.registers, $dest_hi, $dest_lo);
             let src = cpu.registers.$src;
-            cpu.mmu.write(dest_address, src);
+            cpu.write_mem(dest_address, src);
           }
           eval
         }
@@ -1084,7 +1091,7 @@ impl CPU {
             cpu.registers.half_carry(half_carry);
             cpu.registers.carry(carry);
 
-            wide!(cpu.registers, $hi_d, $lo_d, res);
+            wide!(cpu.registers, $hi_d, $lo_d, res, cpu);
           }
           eval
         }
@@ -1107,7 +1114,7 @@ impl CPU {
             cpu.registers.half_carry(half_carry);
             cpu.registers.carry(carry);
 
-            wide!(cpu.registers, s, p, res);
+            wide!(cpu.registers, s, p, res, cpu);
           }
           eval
         }
@@ -1130,7 +1137,7 @@ impl CPU {
             cpu.registers.half_carry(half_carry);
             cpu.registers.carry(carry);
 
-            wide!(cpu.registers, h, l, res);
+            wide!(cpu.registers, h, l, res, cpu);
           }
           eval
         }
@@ -1506,7 +1513,7 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let res = wide!(cpu.registers, b, c);
             let (res, _) = res.overflowing_sub(1);
-            wide!(cpu.registers, b, c, res);
+            wide!(cpu.registers, b, c, res, cpu);
           }
           eval
         }
@@ -1522,12 +1529,13 @@ impl CPU {
       (JR i8) => {
         {
           fn eval(cpu: &mut CPU) {
-            let immed = cpu.mmu.read(cpu.registers.pc) as i8;
+            let immed = cpu.read_mem(cpu.registers.pc) as i8;
             cpu.registers.pc += 1;
             let immed = i16::from(immed);
             let signed_pc = cpu.registers.pc as i16;
             let new_pc = signed_pc + immed;
             cpu.registers.pc = (new_pc as u16);
+            cpu.ticks += 4;
           }
           eval
         }
@@ -1609,8 +1617,8 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let hl = wide!(cpu.registers, h, l);
             let a = cpu.registers.a;
-            cpu.mmu.write(hl, a);
-            wide!(cpu.registers, h, l, hl + 1);
+            cpu.write_mem(hl, a);
+            wide!(cpu.registers, h, l, hl + 1, cpu);
           }
           eval
         }
@@ -1620,8 +1628,8 @@ impl CPU {
           fn eval(cpu: &mut CPU) {
             let hl = wide!(cpu.registers, h, l);
             let a = cpu.registers.a;
-            cpu.mmu.write(hl, a);
-            wide!(cpu.registers, h, l, hl - 1);
+            cpu.write_mem(hl, a);
+            wide!(cpu.registers, h, l, hl - 1, cpu);
           }
           eval
         }
@@ -1632,7 +1640,7 @@ impl CPU {
             let hl = wide!(cpu.registers, h, l);
             let v = cpu.read_mem(hl);
             cpu.registers.a = v;
-            wide!(cpu.registers, h, l, hl + 1);
+            wide!(cpu.registers, h, l, hl + 1, cpu);
           }
           eval
         }
@@ -1643,7 +1651,7 @@ impl CPU {
             let hl = wide!(cpu.registers, h, l);
             let v = cpu.read_mem(hl);
             cpu.registers.a = v;
-            wide!(cpu.registers, h, l, hl - 1);
+            wide!(cpu.registers, h, l, hl - 1, cpu);
           }
           eval
         }
@@ -1703,7 +1711,7 @@ impl CPU {
             sp += 1;
             cpu.registers.$src_hi = hi;
             cpu.registers.$src_lo = lo;
-            wide!(cpu.registers, s, p, sp);
+            wide!(cpu.registers, s, p, sp, cpu);
           }
           eval
         } 
@@ -1715,10 +1723,10 @@ impl CPU {
             let hi = cpu.registers.$src_hi;
             let lo = cpu.registers.$src_lo;
             sp -= 1;
-            cpu.mmu.write(sp, hi);
+            cpu.write_mem(sp, hi);
             sp -= 1;
-            cpu.mmu.write(sp, lo);
-            wide!(cpu.registers, s, p, sp);
+            cpu.write_mem(sp, lo);
+            wide!(cpu.registers, s, p, sp, cpu);
           }
           eval
         } 
@@ -1736,7 +1744,7 @@ impl CPU {
 
             cpu.registers.pc = pc;
 
-            wide!(cpu.registers, s, p, sp);
+            wide!(cpu.registers, s, p, sp, cpu);
           }
           eval
         }
@@ -1754,7 +1762,7 @@ impl CPU {
 
             cpu.registers.pc = pc;
 
-            wide!(cpu.registers, s, p, sp);
+            wide!(cpu.registers, s, p, sp, cpu);
 
             cpu.toggle_interrupts(true);
           }
@@ -1794,7 +1802,7 @@ impl CPU {
 
             cpu.registers.pc = pc;
 
-            wide!(cpu.registers, s, p, sp);
+            wide!(cpu.registers, s, p, sp, cpu);
           }
           eval
         }
@@ -1837,12 +1845,12 @@ impl CPU {
             let mut sp = wide!(cpu.registers, s, p);
             sp -= 1;
             let hi = (pc >> 8) as u8;
-            cpu.mmu.write(sp, hi);
+            cpu.write_mem(sp, hi);
             sp -= 1;
             let lo = pc as u8;
-            cpu.mmu.write(sp, lo);
+            cpu.write_mem(sp, lo);
 
-            wide!(cpu.registers, s, p, sp);
+            wide!(cpu.registers, s, p, sp, cpu);
           }
           eval
         }
@@ -1869,12 +1877,12 @@ impl CPU {
             let mut sp = wide!(cpu.registers, s, p);
             sp -= 1;
             let hi = (pc >> 8) as u8;
-            cpu.mmu.write(sp, hi);
+            cpu.write_mem(sp, hi);
             sp -= 1;
             let lo = pc as u8;
-            cpu.mmu.write(sp, lo);
+            cpu.write_mem(sp, lo);
 
-            wide!(cpu.registers, s, p, sp);
+            wide!(cpu.registers, s, p, sp, cpu);
           }
           eval
         }
@@ -1910,12 +1918,12 @@ impl CPU {
             let mut sp = wide!(cpu.registers, s, p);
             sp -= 1;
             let hi = (pc >> 8) as u8;
-            cpu.mmu.write(sp, hi);
+            cpu.write_mem(sp, hi);
             sp -= 1;
             let lo = pc as u8;
-            cpu.mmu.write(sp, lo);
+            cpu.write_mem(sp, lo);
 
-            wide!(cpu.registers, s, p, sp);
+            wide!(cpu.registers, s, p, sp, cpu);
             
             let address = $nn;
             let address = address as u16;
@@ -2219,6 +2227,8 @@ impl CPU {
       } else {
         self.table[opcode](self);
       }
+
+      self.ticks += 4;
     }
   }
 
@@ -2246,6 +2256,7 @@ use super::*;
 
     cpu.call(0x01);
 
+    assert_eq!(cpu.ticks, 12);
     assert_eq!(wide!(cpu.registers, b, c), 0xBEEF);
   }
 
@@ -2265,6 +2276,8 @@ use super::*;
 
     cpu.call(0x06);
 
+
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.b, 0x69);
   }
 
@@ -2282,6 +2295,7 @@ use super::*;
 
     cpu.call(0x41);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.b, 0x69);
   }
 
@@ -2305,6 +2319,7 @@ use super::*;
 
     cpu.call(0x02);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.mmu.read(0x1234), 0x69);
   }
 
@@ -2322,6 +2337,7 @@ use super::*;
 
     cpu.call(0x03);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(wide!(cpu.registers, b, c), 0x6900);
   }
 
@@ -2338,6 +2354,7 @@ use super::*;
 
     cpu.call(0x04);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.b, 0x69);
     assert!(!cpu.registers.get_negative());
     assert!(!cpu.registers.get_zero());
@@ -2356,6 +2373,7 @@ use super::*;
 
     cpu.call(0x04);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.b, 0x00);
     assert!(!cpu.registers.get_negative());
     assert!(cpu.registers.get_zero());
@@ -2374,6 +2392,7 @@ use super::*;
 
     cpu.call(0x04);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.b, 0x10);
     assert!(!cpu.registers.get_negative());
     assert!(!cpu.registers.get_zero());
@@ -2397,6 +2416,7 @@ use super::*;
 
     cpu.call(0x34);
 
+    assert_eq!(cpu.ticks, 12);
     let byte = cpu.mmu.read(0x1234);
     assert_eq!(byte, 0x69);
     assert!(!cpu.registers.get_negative());
@@ -2416,6 +2436,7 @@ use super::*;
 
     cpu.call(0x05);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.b, 0x69);
   }
 
@@ -2431,6 +2452,7 @@ use super::*;
 
     cpu.call(0x07);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0b10000001, "{:#010b} != {:#010b}", cpu.registers.a, 0b10000001);
   }
 
@@ -2447,6 +2469,7 @@ use super::*;
 
     cpu.call(0x17);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0b10000000, "{:#010b} != {:#010b}", cpu.registers.a, 0b10000000);
     assert!(cpu.registers.get_carry());
   }
@@ -2467,6 +2490,7 @@ use super::*;
 
     cpu.call(0x17);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0b10000001, "{:#010b} != {:#010b}", cpu.registers.a, 0b10000001);
     assert!(cpu.registers.get_carry());
   }
@@ -2487,6 +2511,7 @@ use super::*;
 
     cpu.call(0x17);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0b10000001, "{:#010b} != {:#010b}", cpu.registers.a, 0b10000001);
     assert!(!cpu.registers.get_carry());
   }
@@ -2503,6 +2528,7 @@ use super::*;
 
     cpu.call(0x1F);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0b01000000, "{:#010b} != {:#010b}", cpu.registers.a, 0b11000000);
     assert!(cpu.registers.get_carry());
   }
@@ -2521,6 +2547,7 @@ use super::*;
 
     cpu.call(0x0F);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 0b10001000, "{:#010b} != {:#010b}", cpu.registers.a, 0b10001000);
     assert!(cpu.registers.get_carry());
   }
@@ -2539,12 +2566,13 @@ use super::*;
 
     cpu.call(0x08);
 
+    assert_eq!(cpu.ticks, 20);
     assert_eq!(cpu.mmu.read(0x0000), 0xEF);
     assert_eq!(cpu.mmu.read(0x0001), 0xBE);
   }
 
   #[test]
-  fn test_ld_hl_bc() {
+  fn test_add_hl_bc() {
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x00,
@@ -2559,6 +2587,7 @@ use super::*;
 
     cpu.call(0x09);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.h, 0xD0, "{:#02x} != {:#02x}", cpu.registers.h, 0xD0);
     assert_eq!(cpu.registers.l, 0x00);
   }
@@ -2582,6 +2611,7 @@ use super::*;
 
     cpu.call(0x0A);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.a, 0x69, "{:#02x} != {:#02x}", cpu.registers.a, 0x69);
   }
 
@@ -2600,6 +2630,7 @@ use super::*;
 
     cpu.call(0x0B);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0xA1, "{:#02x} != {:#02x}", cpu.registers.b, 0xA1);
     assert_eq!(cpu.registers.c, 0xFF, "{:#02x} != {:#02x}", cpu.registers.c, 0xFF);
   }
@@ -2619,6 +2650,7 @@ use super::*;
 
     cpu.call(0x18);
 
+    assert_eq!(cpu.ticks, 12);
     assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
   }
 
