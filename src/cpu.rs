@@ -3041,6 +3041,7 @@ use super::*;
 
     cpu.call(0xB8);
 
+    assert_eq!(cpu.ticks, 4);
     assert!(!cpu.registers.get_half_carry());
     assert!(cpu.registers.get_carry());
   }
@@ -3058,6 +3059,7 @@ use super::*;
 
     cpu.call(0x90);
 
+    assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.a, 15);
     assert!(cpu.registers.get_half_carry());
     assert!(!cpu.registers.get_carry());
@@ -3076,6 +3078,7 @@ use super::*;
 
     cpu.call(0x90);
 
+    assert_eq!(cpu.ticks, 4);
     assert!(!cpu.registers.get_half_carry());
     assert!(cpu.registers.get_carry());
   }
@@ -3093,6 +3096,7 @@ use super::*;
 
     cpu.call(0x90);
 
+    assert_eq!(cpu.ticks, 4);
     assert!(cpu.registers.get_half_carry());
     assert!(cpu.registers.get_carry());
   }
