@@ -1819,6 +1819,7 @@ impl CPU {
             if (!cpu.registers.$condition()) {
               // skip past the immediate
               cpu.registers.pc += 2;
+              cpu.ticks += 8;
               return;
             }
 
@@ -1830,6 +1831,7 @@ impl CPU {
             let pc = hi | lo;
 
             cpu.registers.pc = pc;
+            cpu.ticks += 4;
           }
           eval
         }
@@ -3426,6 +3428,7 @@ use super::*;
 
     cpu.call(0xC2);
 
+    assert_eq!(cpu.ticks, 16);
     let pc = cpu.registers.pc;
     assert_eq!(pc, 0xBEEF, "{:#06x} != {:#06x}", pc, 0xBEEF);
   }
@@ -3452,6 +3455,7 @@ use super::*;
 
     cpu.call(0xC2);
 
+    assert_eq!(cpu.ticks, 12);
     let pc = cpu.registers.pc;
     assert_eq!(pc, 0x1002, "{:#06x} != {:#06x}", pc, 0x1002);
   }
