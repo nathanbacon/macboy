@@ -3509,6 +3509,8 @@ use super::*;
 
     cpu.call(0xCD);
 
+    assert_eq!(cpu.ticks, 24);
+
     assert_eq!(cpu.registers.pc, 0xBEEF);
     let sp = wide!(cpu.registers, s, p);
     assert_eq!(sp, 0x2000);
