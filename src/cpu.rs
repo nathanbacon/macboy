@@ -3370,6 +3370,7 @@ use super::*;
 
     cpu.call(0xC5);
 
+    assert_eq!(cpu.ticks, 16);
     let hi = cpu.mmu.read(0x1001) as u16;
     let lo = cpu.mmu.read(0x1000) as u16;
     let v = (hi << 8) | lo;
