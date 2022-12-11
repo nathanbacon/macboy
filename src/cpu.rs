@@ -1716,6 +1716,7 @@ impl CPU {
             cpu.registers.$src_hi = hi;
             cpu.registers.$src_lo = lo;
             wide!(cpu.registers, s, p, sp, cpu);
+            cpu.ticks -= 4; // compensate for pipelined timing
           }
           eval
         } 
@@ -3343,6 +3344,7 @@ use super::*;
 
     cpu.call(0xC1);
 
+    assert_eq!(cpu.ticks, 12);
     let bc = wide!(cpu.registers, b, c);
     assert_eq!(bc, 0xBEEF, "{:#06x} != {:#06x}", bc, 0xBEEF);
     let sp = wide!(cpu.registers, s, p);
