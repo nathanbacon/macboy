@@ -1793,6 +1793,7 @@ impl CPU {
         {
           fn eval(cpu: &mut CPU) {
             if (!cpu.registers.$condition()) {
+              cpu.ticks += 4;
               return;
             }
 
@@ -1805,7 +1806,7 @@ impl CPU {
             let pc = hi | lo;
 
             cpu.registers.pc = pc;
-
+            cpu.ticks += 4;
             wide!(cpu.registers, s, p, sp, cpu);
           }
           eval
@@ -3258,6 +3259,7 @@ use super::*;
 
     cpu.call(0xC9);
 
+    assert_eq!(cpu.ticks, 16);
     assert_eq!(cpu.registers.pc, 0xBEEF);
     let sp = wide!(cpu.registers, s, p);
     assert_eq!(sp, 0x1002);
@@ -3285,6 +3287,7 @@ use super::*;
 
     cpu.call(0xC0);
 
+    assert_eq!(cpu.ticks, 20);
     assert_eq!(cpu.registers.pc, 0xBEEF);
     let sp = wide!(cpu.registers, s, p);
     assert_eq!(sp, 0x1002);
@@ -3314,6 +3317,7 @@ use super::*;
 
     cpu.call(0xC0);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.pc, 0x4200);
     let sp = wide!(cpu.registers, s, p);
     assert_eq!(sp, 0x1000);
