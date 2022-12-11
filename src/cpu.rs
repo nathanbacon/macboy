@@ -1099,7 +1099,7 @@ impl CPU {
       (ADD SP, i8) => {
         {
           fn eval(cpu: &mut CPU) {
-            let src = cpu.mmu.read(cpu.registers.pc);
+            let src = cpu.read_mem(cpu.registers.pc);
             cpu.registers.pc += 1;
             let src = src as i8;
             let src = i16::from(src);
@@ -1115,6 +1115,7 @@ impl CPU {
             cpu.registers.carry(carry);
 
             wide!(cpu.registers, s, p, res, cpu);
+            cpu.ticks += 4;
           }
           eval
         }
@@ -3568,6 +3569,7 @@ use super::*;
 
     cpu.call(0xE8);
 
+    assert_eq!(cpu.ticks, 16);
     let sp = wide!(cpu.registers, s, p);
     assert_eq!(sp, 0xAB11);
     assert_eq!(cpu.registers.pc, 0x1001);
