@@ -1904,6 +1904,7 @@ impl CPU {
             let pc = hi | lo;
 
             cpu.registers.pc = pc;
+            cpu.ticks += 4
           }
           eval
         }
@@ -3398,6 +3399,7 @@ use super::*;
 
     cpu.call(0xC3);
 
+    assert_eq!(cpu.ticks, 16);
     let pc = cpu.registers.pc;
     assert_eq!(pc, 0xBEEF, "{:#06x} != {:#06x}", pc, 0xBEEF);
   }
