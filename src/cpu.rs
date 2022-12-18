@@ -3651,6 +3651,7 @@ use super::*;
 
     cpu.call(0xEA);
 
+    assert_eq!(cpu.ticks, 16);
     let dest = cpu.mmu.read(0x1122);
     assert_eq!(dest, 0x69, "{:#04x} != {:#04x}", dest, 0x69);
     assert_eq!(cpu.registers.pc, 0x1002, "{:#06x} != {:#06x}", cpu.registers.pc, 0x1002);
