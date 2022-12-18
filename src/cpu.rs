@@ -3690,6 +3690,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x00);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0, "{:#010b} != {:#010b}", cpu.registers.b, 0);
     assert!(cpu.registers.get_zero());
     assert!(!cpu.registers.get_carry());
