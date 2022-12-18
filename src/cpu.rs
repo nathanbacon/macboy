@@ -3623,6 +3623,7 @@ use super::*;
 
     cpu.call(0xFA);
 
+    assert_eq!(cpu.ticks, 16);
     let a = cpu.registers.a;
     assert_eq!(a, 0x69, "{:#04x} != {:#04x}", a, 0x69);
     assert_eq!(cpu.registers.pc, 0x1002, "{:#06x} != {:#06x}", cpu.registers.pc, 0x1002);
