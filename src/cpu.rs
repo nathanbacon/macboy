@@ -1123,7 +1123,7 @@ impl CPU {
       (LD HL, SP+i8) => {
         {
           fn eval(cpu: &mut CPU) {
-            let src = cpu.mmu.read(cpu.registers.pc);
+            let src = cpu.read_mem(cpu.registers.pc);
             cpu.registers.pc += 1;
             let src = src as i8;
             let src = i16::from(src);
@@ -3596,6 +3596,7 @@ use super::*;
 
     cpu.call(0xF8);
 
+    assert_eq!(cpu.ticks, 12);
     let hl = wide!(cpu.registers, h, l);
     assert_eq!(hl, 0xAB33, "{:#06x} != {:#06x}", hl, 0xAB33);
     assert_eq!(cpu.registers.pc, 0x1001, "{:#06x} != {:#06x}", cpu.registers.pc, 0x1001);
