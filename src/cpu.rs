@@ -4001,6 +4001,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x30);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0b10001110);
     assert!(!cpu.registers.get_zero());
     assert!(!cpu.registers.get_negative());
@@ -4021,6 +4022,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x30);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0);
     assert!(cpu.registers.get_zero());
     assert!(!cpu.registers.get_negative());
