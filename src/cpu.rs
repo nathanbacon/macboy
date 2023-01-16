@@ -4043,6 +4043,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x40);
 
+    assert_eq!(cpu.ticks, 8);
     assert!(!cpu.registers.get_zero());
     assert!(!cpu.registers.get_negative());
     assert!(cpu.registers.get_half_carry());
@@ -4061,6 +4062,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x40);
 
+    assert_eq!(cpu.ticks, 8);
     assert!(cpu.registers.get_zero());
     assert!(!cpu.registers.get_negative());
     assert!(cpu.registers.get_half_carry());
@@ -4079,6 +4081,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x60);
 
+    assert_eq!(cpu.ticks, 8);
     assert!(!cpu.registers.get_zero());
     assert!(!cpu.registers.get_negative());
     assert!(cpu.registers.get_half_carry());
@@ -4097,6 +4100,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x60);
 
+    assert_eq!(cpu.ticks, 8);
     assert!(cpu.registers.get_zero());
     assert!(!cpu.registers.get_negative());
     assert!(cpu.registers.get_half_carry());
@@ -4115,6 +4119,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x80);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0xFE);
   }
 
@@ -4131,6 +4136,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0xA0);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0xEF);
   }
 
@@ -4151,6 +4157,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0xA6);
 
+    assert_eq!(cpu.ticks, 16);
     let byte = cpu.mmu.read(0x1234);
     assert_eq!(byte, 0xEF);
   }
@@ -4168,6 +4175,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0xC0);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0x01);
   }
 
@@ -4184,6 +4192,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0xE0);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0x10);
   }
 
@@ -4204,6 +4213,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0xE6);
 
+    assert_eq!(cpu.ticks, 16);
     let byte = cpu.mmu.read(0x1234);
     assert_eq!(byte, 0x10);
   }
