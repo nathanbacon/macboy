@@ -3828,6 +3828,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x18);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0b01000001, "{:#010b} != {:#010b}", cpu.registers.b, 0b01000001);
     assert!(!cpu.registers.get_carry());
     assert!(!cpu.registers.get_half_carry());
