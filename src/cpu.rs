@@ -3851,6 +3851,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x20);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0b10000010, "{:#010b} != {:#010b}", cpu.registers.b, 0b10000010);
     assert!(cpu.registers.get_carry());
   }
@@ -3871,6 +3872,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x20);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0b10000010, "{:#010b} != {:#010b}", cpu.registers.b, 0b10000010);
     assert!(!cpu.registers.get_carry());
   }
@@ -3891,6 +3893,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x28);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0b11100001, "{:#010b} != {:#010b}", cpu.registers.b, 0b11100001);
     assert!(cpu.registers.get_carry());
   }
@@ -3911,6 +3914,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x38);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0b01100001, "{:#010b} != {:#010b}", cpu.registers.b, 0b01100001);
     assert!(cpu.registers.get_carry());
     assert!(!cpu.registers.get_zero());
@@ -3933,6 +3937,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x38);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0b01100001, "{:#010b} != {:#010b}", cpu.registers.b, 0b01100001);
     assert!(!cpu.registers.get_carry());
     assert!(!cpu.registers.get_zero());
@@ -3955,6 +3960,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x38);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0, "{:#010b} != {:#010b}", cpu.registers.b, 0);
     assert!(cpu.registers.get_carry());
     assert!(cpu.registers.get_zero());
@@ -3977,6 +3983,7 @@ use super::*;
     cpu.call(0xCB);
     cpu.call(0x28);
 
+    assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.b, 0b00100001, "{:#010b} != {:#010b}", cpu.registers.b, 0b00100001);
     assert!(!cpu.registers.get_carry());
   }
