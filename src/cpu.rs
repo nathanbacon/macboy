@@ -1664,6 +1664,34 @@ impl CPU {
       (DAA) => {
         {
           fn eval(cpu: &mut CPU) {
+            let mut a = u16::from(cpu.registers.a);
+            let mut should_carry = false;
+            if !cpu.registers.get_negative() {
+              if cpu.registers.get_half_carry() || (a & 0x0F) >= 0x0A {
+                a += 0x06;
+              }
+              if cpu.registers.get_carry() || a >= 0xA0 {
+                a += 0x60;
+                should_carry = true;
+              }
+            } else {
+              if cpu.registers.get_half_carry() {
+                let (res, _) = a.overflowing_sub(0x06);
+                a = res & 0xFF;
+              }
+
+              if cpu.registers.get_carry() {
+                let (res, _) = a.overflowing_sub(0x60);
+                a = res & 0xFF;
+                should_carry = true;
+              }
+            }
+
+            cpu.registers.half_carry(false);
+            cpu.registers.carry(should_carry);
+            a &= 0xFF;
+            cpu.registers.zero(a == 0);
+            cpu.registers.a = a as u8;
           }
           eval
         }
@@ -2289,6 +2317,49 @@ use super::*;
 
     assert_eq!(cpu.ticks, 4);
     assert_eq!(cpu.registers.b, 0x69);
+  }
+  
+  #[test]
+  fn test_daa() {
+
+    let mut cpu = CPU { 
+      registers: Registers {
+        a: 0x11,
+        b: 0x19,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x80);
+    assert_eq!(cpu.registers.a, 0x2A);
+    assert_eq!(cpu.ticks, 4);
+    cpu.call(0x27);
+    assert_eq!(cpu.registers.a, 0x30);
+
+    assert_eq!(cpu.ticks, 4+4);
+  }
+
+  #[test]
+  fn test_daa_carry() {
+
+    let mut cpu = CPU { 
+      registers: Registers {
+        a: 0x01,
+        b: 0x99,
+        ..Registers::new()
+      },
+      ..CPU::new()
+    }; 
+
+    cpu.call(0x80);
+    assert_eq!(cpu.registers.a, 0x9A);
+    assert_eq!(cpu.ticks, 4);
+    cpu.call(0x27);
+    assert_eq!(cpu.registers.a, 0x00);
+    assert!(cpu.registers.get_carry());
+
+    assert_eq!(cpu.ticks, 4+4);
   }
 
   #[test]
