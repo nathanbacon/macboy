@@ -25,14 +25,14 @@ macro_rules! four_cycle_memory_access {
     ($reg: expr, $mmu:expr, $address: expr) => {
       {
         let address: u16 = $address;
-        let val = $mmu.read(address);
+        let val = $mmu[address];
         val
       }
     };
     ($reg: expr, $mmu:expr, $address: expr, $value: expr) => {
       {
         let address: u16 = $address;
-        let val = $mmu.write(address, $value);
+        let val = $mmu[address] = $value;
         val
       }
     };
@@ -57,19 +57,22 @@ impl CPU {
 
   pub fn read_mem(&mut self, address: u16) -> u8 {
     self.ticks += 4;
-    self.mmu.read(address)
+    let address = address as usize;
+    self.mmu[address]
   }
 
   pub fn read_mem_16(&mut self, address: u16) -> u16 {
     self.ticks += 8;
-    let lower = self.mmu.read(address) as u16;
-    let upper = self.mmu.read(address + 1) as u16; 
+    let address = address as usize;
+    let lower = self.mmu[address] as u16;
+    let upper = self.mmu[address + 1] as u16; 
     (upper << 8) | lower
   }
 
   pub fn write_mem(&mut self, address: u16, value: u8) {
     self.ticks += 4;
-    self.mmu.write(address, value);
+    let address = address as usize;
+    self.mmu[address] = value;
   }
 
   pub fn build_extended_table() -> Vec<fn(&mut CPU)> {
@@ -2280,8 +2283,8 @@ use super::*;
   #[test]
   fn test_ld_bc_word() {
     let mut mmu = MMU::new();
-    mmu.write(0x0000, 0xEF);
-    mmu.write(0x0001, 0xBE);
+    mmu[0x0000] = 0xEF;
+    mmu[0x0001] = 0xBE;
 
     let mut cpu = CPU { 
       registers: Registers {
@@ -2301,7 +2304,7 @@ use super::*;
   #[test]
   fn test_ld_b_u8() {
     let mut mmu = MMU::new();
-    mmu.write(0x0000, 0x69);
+    mmu[0x0000] = 0x69;
 
     let mut cpu = CPU { 
       registers: Registers {
@@ -2383,8 +2386,8 @@ use super::*;
   #[test]
   fn test_ld_mem_bc_a() {
     let mut mmu = MMU::new();
-    mmu.write(0x0000, 0x34);
-    mmu.write(0x0001, 0x12);
+    mmu[0x0000] = 0x34;
+    mmu[0x0001] = 0x12;
 
     let mut cpu = CPU { 
       registers: Registers {
@@ -2401,7 +2404,7 @@ use super::*;
     cpu.call(0x02);
 
     assert_eq!(cpu.ticks, 8);
-    assert_eq!(cpu.mmu.read(0x1234), 0x69);
+    assert_eq!(cpu.mmu[0x1234], 0x69);
   }
 
   #[test]
@@ -2483,7 +2486,7 @@ use super::*;
   #[test]
   fn test_inc_mem_hl() {
     let mut mmu = MMU::new();
-    mmu.write(0x1234, 0x69 - 1);
+    mmu[0x1234] = 0x69 - 1;
     let mut cpu = CPU { 
       registers: Registers {
         h: 0x12,
@@ -2498,7 +2501,7 @@ use super::*;
     cpu.call(0x34);
 
     assert_eq!(cpu.ticks, 12);
-    let byte = cpu.mmu.read(0x1234);
+    let byte = cpu.mmu[0x1234];
     assert_eq!(byte, 0x69);
     assert!(!cpu.registers.get_negative());
     assert!(!cpu.registers.get_zero());
@@ -2648,8 +2651,8 @@ use super::*;
     cpu.call(0x08);
 
     assert_eq!(cpu.ticks, 20);
-    assert_eq!(cpu.mmu.read(0x0000), 0xEF);
-    assert_eq!(cpu.mmu.read(0x0001), 0xBE);
+    assert_eq!(cpu.mmu[0x0000], 0xEF);
+    assert_eq!(cpu.mmu[0x0001], 0xBE);
   }
 
   #[test]
@@ -2676,7 +2679,7 @@ use super::*;
   #[test]
   fn test_ld_a_bc_() {
     let mut mmu = MMU::new();
-    mmu.write(0x1234, 0x69);
+    mmu[0x1234] = 0x69;
 
     let mut cpu = CPU { 
       registers: Registers {
@@ -2719,7 +2722,7 @@ use super::*;
   #[test]
   fn test_jr_i8() {
     let mut mmu = MMU::new();
-    mmu.write(0x0010, 0x05);
+    mmu[0x0010] = 0x05;
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x0010,
@@ -2738,7 +2741,7 @@ use super::*;
   #[test]
   fn test_jr_i8_negative() {
     let mut mmu = MMU::new();
-    mmu.write(0x0010, i8::from(-5) as u8);
+    mmu[0x0010] = i8::from(-5) as u8;
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x0010,
@@ -2756,7 +2759,7 @@ use super::*;
   #[test]
   fn test_jr_nz_i8_zero() {
     let mut mmu = MMU::new();
-    mmu.write(0x0010, 0x05);
+    mmu[0x0010] = 0x05;
     let mut registers = Registers {
       pc: 0x0010,
       ..Registers::new()
@@ -2778,7 +2781,7 @@ use super::*;
   #[test]
   fn test_jr_nz_i8_not_zero() {
     let mut mmu = MMU::new();
-    mmu.write(0x0010, 0x05);
+    mmu[0x0010] = 0x05;
     let mut registers = Registers {
       pc: 0x0010,
       ..Registers::new()
@@ -2800,7 +2803,7 @@ use super::*;
   #[test]
   fn test_jr_nz_i8_not_zero_subtraction() {
     let mut mmu = MMU::new();
-    mmu.write(0x0010, -5i8 as u8);
+    mmu[0x0010] = -5i8 as u8;
     let mut registers = Registers {
       pc: 0x0010,
       ..Registers::new()
@@ -2822,7 +2825,7 @@ use super::*;
   #[test]
   fn test_jr_z_i8_zero() {
     let mut mmu = MMU::new();
-    mmu.write(0x0010, 0x05);
+    mmu[0x0010] = 0x05;
     let mut registers = Registers {
       pc: 0x0010,
       ..Registers::new()
@@ -2844,7 +2847,7 @@ use super::*;
   #[test]
   fn test_jr_z_i8_zero_subtraction() {
     let mut mmu = MMU::new();
-    mmu.write(0x0010, -5i8 as u8);
+    mmu[0x0010] = -5i8 as u8;
     let mut registers = Registers {
       pc: 0x0010,
       ..Registers::new()
@@ -2866,7 +2869,7 @@ use super::*;
   #[test]
   fn test_jr_z_i8_not_zero() {
     let mut mmu = MMU::new();
-    mmu.write(0x0010, 0x05);
+    mmu[0x0010] = 0x05;
     let mut registers = Registers {
       pc: 0x0010,
       ..Registers::new()
@@ -3005,7 +3008,7 @@ use super::*;
   #[test]
   fn test_add_a_hl() {
     let mut mmu = MMU::new();
-    mmu.write(0x1234, 0x13);
+    mmu[0x1234] = 0x13;
 
     let mut cpu = CPU { 
       registers: Registers {
@@ -3318,8 +3321,8 @@ use super::*;
   #[test]
   fn test_ret() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    mmu[0x1000] = 0xEF;
+    mmu[0x1001] = 0xBE;
     let mmu = mmu;
     let registers = Registers {
       s: 0x10,
@@ -3344,8 +3347,8 @@ use super::*;
   #[test]
   fn test_ret_nz() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    mmu[0x1000] = 0xEF;
+    mmu[0x1001] = 0xBE;
     let mmu = mmu;
     let mut registers = Registers {
       s: 0x10,
@@ -3373,8 +3376,8 @@ use super::*;
   #[test]
   fn test_ret_nz_while_zero() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    mmu[0x1000] = 0xEF;
+    mmu[0x1001] = 0xBE;
     let mmu = mmu;
     let mut registers = Registers {
       s: 0x10,
@@ -3402,8 +3405,8 @@ use super::*;
   #[test]
   fn test_pop_bc() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    mmu[0x1000] = 0xEF;
+    mmu[0x1001] = 0xBE;
     let mmu = mmu;
     let registers = Registers {
       s: 0x10,
@@ -3446,8 +3449,8 @@ use super::*;
     cpu.call(0xC5);
 
     assert_eq!(cpu.ticks, 16);
-    let hi = cpu.mmu.read(0x1001) as u16;
-    let lo = cpu.mmu.read(0x1000) as u16;
+    let hi = cpu.mmu[0x1001] as u16;
+    let lo = cpu.mmu[0x1000] as u16;
     let v = (hi << 8) | lo;
     assert_eq!(v, 0xBEEF, "{:#06x} != {:#06x}", v, 0xBEEF);
     let sp = wide!(cpu.registers, s, p);
@@ -3457,8 +3460,8 @@ use super::*;
   #[test]
   fn test_jp_u16() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    mmu[0x1000] = 0xEF;
+    mmu[0x1001] = 0xBE;
     let mmu = mmu;
     let registers = Registers {
       pc: 0x1000,
@@ -3481,8 +3484,8 @@ use super::*;
   #[test]
   fn test_jp_nz_u16() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    mmu[0x1000] = 0xEF;
+    mmu[0x1001] = 0xBE;
     let mmu = mmu;
     let mut registers = Registers {
       pc: 0x1000,
@@ -3508,8 +3511,8 @@ use super::*;
   #[test]
   fn test_jp_nz_u16_while_zero() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    mmu[0x1000] = 0xEF;
+    mmu[0x1001] = 0xBE;
     let mmu = mmu;
     let mut registers = Registers {
       pc: 0x1000,
@@ -3554,8 +3557,8 @@ use super::*;
     let sp = wide!(cpu.registers, s, p);
     assert_eq!(sp, 0x1000);
 
-    let lo = cpu.mmu.read(0x1000) as u16;
-    let hi = cpu.mmu.read(0x1001) as u16;
+    let lo = cpu.mmu[0x1000] as u16;
+    let hi = cpu.mmu[0x1001] as u16;
     let v = (hi << 8) | lo;
     assert_eq!(v, 0xBEEF);
   }
@@ -3563,8 +3566,8 @@ use super::*;
   #[test]
   fn test_call() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    mmu[0x1000] = 0xEF;
+    mmu[0x1001] = 0xBE;
     let mmu = mmu;
     let registers = Registers {
       s: 0x20,
@@ -3587,8 +3590,8 @@ use super::*;
     let sp = wide!(cpu.registers, s, p);
     assert_eq!(sp, 0x2000);
 
-    let lo = cpu.mmu.read(0x2000) as u16;
-    let hi = cpu.mmu.read(0x2001) as u16;
+    let lo = cpu.mmu[0x2000] as u16;
+    let hi = cpu.mmu[0x2001] as u16;
     let old_pc = (hi << 8) | lo;
     assert_eq!(old_pc, 0x1002);
   }
@@ -3596,7 +3599,7 @@ use super::*;
   #[test]
   fn test_add_sp_i8() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0x11);
+    mmu[0x1000] = 0x11;
     let mmu = mmu;
 
     let registers = Registers {
@@ -3622,7 +3625,7 @@ use super::*;
   #[test]
   fn test_add_sp_i8_sub() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, (-0x11 as i8) as u8);
+    mmu[0x1000] = (-0x11 as i8) as u8;
     let mmu = mmu;
 
     let registers = Registers {
@@ -3649,7 +3652,7 @@ use super::*;
   #[test]
   fn test_ld_hl_sp_i8() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0x11);
+    mmu[0x1000] = 0x11;
     let mmu = mmu;
 
     let registers = Registers {
@@ -3676,9 +3679,9 @@ use super::*;
   #[test]
   fn test_ld_a_mem_u16() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0x22);
-    mmu.write(0x1001, 0x11);
-    mmu.write(0x1122, 0x69);
+    mmu[0x1000] = 0x22;
+    mmu[0x1001] = 0x11;
+    mmu[0x1122] = 0x69;
     let mmu = mmu;
 
     let registers = Registers {
@@ -3703,9 +3706,9 @@ use super::*;
   #[test]
   fn test_ld_mem_u16_a() {
     let mut mmu = MMU::new();
-    mmu.write(0x1000, 0x22);
-    mmu.write(0x1001, 0x11);
-    mmu.write(0x1122, 0x33);
+    mmu[0x1000] = 0x22;
+    mmu[0x1001] = 0x11;
+    mmu[0x1122] = 0x33;
     let mmu = mmu;
 
     let registers = Registers {
@@ -3723,7 +3726,7 @@ use super::*;
     cpu.call(0xEA);
 
     assert_eq!(cpu.ticks, 16);
-    let dest = cpu.mmu.read(0x1122);
+    let dest = cpu.mmu[0x1122];
     assert_eq!(dest, 0x69, "{:#04x} != {:#04x}", dest, 0x69);
     assert_eq!(cpu.registers.pc, 0x1002, "{:#06x} != {:#06x}", cpu.registers.pc, 0x1002);
   }
@@ -4214,7 +4217,7 @@ use super::*;
   #[test]
   fn test_res_4_hl() {
     let mut mmu = MMU::new();
-    mmu.write(0x1234, 0xFF);
+    mmu[0x1234] = 0xFF;
     let mut cpu = CPU { 
       registers: Registers {
         h: 0x12,
@@ -4229,7 +4232,7 @@ use super::*;
     cpu.call(0xA6);
 
     assert_eq!(cpu.ticks, 16);
-    let byte = cpu.mmu.read(0x1234);
+    let byte = cpu.mmu[0x1234];
     assert_eq!(byte, 0xEF);
   }
 
@@ -4270,7 +4273,7 @@ use super::*;
   #[test]
   fn test_set_4_hl() {
     let mut mmu = MMU::new();
-    mmu.write(0x1234, 0x00);
+    mmu[0x1234] = 0x00;
     let mut cpu = CPU { 
       registers: Registers {
         h: 0x12,
@@ -4285,7 +4288,7 @@ use super::*;
     cpu.call(0xE6);
 
     assert_eq!(cpu.ticks, 16);
-    let byte = cpu.mmu.read(0x1234);
+    let byte = cpu.mmu[0x1234];
     assert_eq!(byte, 0x10);
   }
 
