@@ -18,9 +18,15 @@ pub struct MBC1 {
 
 pub struct MBC3 {
   rom_bank_select: u8,
-  rom_banks: [[u8; 0x4000]; 0x7F],
+  rom_banks: [[u8; 0x4000]; 0x80],
   ram_bank_select: u8,
   ram_banks: [[u8; 0x2000]; 0x04],
+}
+
+impl MBC3 {
+  pub fn new() -> MBC3 {
+    MBC3 { rom_bank_select: 1, rom_banks: [[0u8; 0x4000]; 0x80], ram_bank_select: 0, ram_banks: [[0u8; 0x2000]; 0x04] }
+  }
 }
 
 impl ReadableMemory for MBC3 {

@@ -1,7 +1,7 @@
 use std::ops::{Index, IndexMut};
 
 use crate::gpu::GPU;
-use crate::cartridge::{Catridge, MBC};
+use crate::cartridge::{Catridge, MBC, MBC3};
 
 pub struct MMU<T> where T: MBC {
   bank0: [u8; 0x4000],
@@ -17,6 +17,12 @@ impl<T: MBC> MMU<T> {
       bank1: [(); 0x4000].map(|_| 0),
       gpu: GPU::new(),
       mbc,
+    }
+  }
+  
+  pub fn new_with_mbc3() -> MMU<T> {
+    MMU {
+      ..MMU::new(MBC3::new())
     }
   }
 

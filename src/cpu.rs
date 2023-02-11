@@ -1,10 +1,10 @@
-use crate::{registers::{Registers, self}, mmu::MMU, };
+use crate::{registers::{Registers, self}, mmu::MMU, cartridge::MBC, };
 
-pub struct CPU {
+pub struct CPU<T> where T: MBC {
   registers: Registers,
-  mmu: MMU,
-  table: Vec<fn(&mut CPU)>,
-  extended_table: Vec<fn(&mut CPU)>,
+  mmu: MMU<T>,
+  table: Vec<fn(&mut CPU<T>)>,
+  extended_table: Vec<fn(&mut CPU<T>)>,
   interrupt_enabled: bool,
   prefix_mode: bool,
   ticks: u64
@@ -46,7 +46,7 @@ impl CPU {
   pub fn new() -> CPU {
     CPU {
       registers: Registers::new(),
-      mmu: MMU::new(),
+      mmu: MMU::new_with_mbc3(),
       table: CPU::build(),
       extended_table: CPU::build_extended_table(),
       interrupt_enabled: true,
@@ -2282,7 +2282,7 @@ use super::*;
 
   #[test]
   fn test_ld_bc_word() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0000] = 0xEF;
     mmu[0x0001] = 0xBE;
 
@@ -2303,7 +2303,7 @@ use super::*;
 
   #[test]
   fn test_ld_b_u8() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0000] = 0x69;
 
     let mut cpu = CPU { 
@@ -2385,7 +2385,7 @@ use super::*;
 
   #[test]
   fn test_ld_mem_bc_a() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0000] = 0x34;
     mmu[0x0001] = 0x12;
 
@@ -2485,7 +2485,7 @@ use super::*;
 
   #[test]
   fn test_inc_mem_hl() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1234] = 0x69 - 1;
     let mut cpu = CPU { 
       registers: Registers {
@@ -2678,7 +2678,7 @@ use super::*;
 
   #[test]
   fn test_ld_a_bc_() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1234] = 0x69;
 
     let mut cpu = CPU { 
@@ -2721,7 +2721,7 @@ use super::*;
 
   #[test]
   fn test_jr_i8() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0010] = 0x05;
     let mut cpu = CPU { 
       registers: Registers {
@@ -2740,7 +2740,7 @@ use super::*;
 
   #[test]
   fn test_jr_i8_negative() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0010] = i8::from(-5) as u8;
     let mut cpu = CPU { 
       registers: Registers {
@@ -2758,7 +2758,7 @@ use super::*;
 
   #[test]
   fn test_jr_nz_i8_zero() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0010] = 0x05;
     let mut registers = Registers {
       pc: 0x0010,
@@ -2780,7 +2780,7 @@ use super::*;
 
   #[test]
   fn test_jr_nz_i8_not_zero() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0010] = 0x05;
     let mut registers = Registers {
       pc: 0x0010,
@@ -2802,7 +2802,7 @@ use super::*;
 
   #[test]
   fn test_jr_nz_i8_not_zero_subtraction() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0010] = -5i8 as u8;
     let mut registers = Registers {
       pc: 0x0010,
@@ -2824,7 +2824,7 @@ use super::*;
 
   #[test]
   fn test_jr_z_i8_zero() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0010] = 0x05;
     let mut registers = Registers {
       pc: 0x0010,
@@ -2846,7 +2846,7 @@ use super::*;
 
   #[test]
   fn test_jr_z_i8_zero_subtraction() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0010] = -5i8 as u8;
     let mut registers = Registers {
       pc: 0x0010,
@@ -2868,7 +2868,7 @@ use super::*;
 
   #[test]
   fn test_jr_z_i8_not_zero() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x0010] = 0x05;
     let mut registers = Registers {
       pc: 0x0010,
@@ -3007,7 +3007,7 @@ use super::*;
 
   #[test]
   fn test_add_a_hl() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1234] = 0x13;
 
     let mut cpu = CPU { 
@@ -3320,7 +3320,7 @@ use super::*;
 
   #[test]
   fn test_ret() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0xEF;
     mmu[0x1001] = 0xBE;
     let mmu = mmu;
@@ -3346,7 +3346,7 @@ use super::*;
 
   #[test]
   fn test_ret_nz() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0xEF;
     mmu[0x1001] = 0xBE;
     let mmu = mmu;
@@ -3375,7 +3375,7 @@ use super::*;
 
   #[test]
   fn test_ret_nz_while_zero() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0xEF;
     mmu[0x1001] = 0xBE;
     let mmu = mmu;
@@ -3404,7 +3404,7 @@ use super::*;
 
   #[test]
   fn test_pop_bc() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0xEF;
     mmu[0x1001] = 0xBE;
     let mmu = mmu;
@@ -3431,7 +3431,7 @@ use super::*;
 
   #[test]
   fn test_push_bc() {
-    let mmu = MMU::new();
+    let mmu = MMU::new_with_mbc3();
     let registers = Registers {
       s: 0x10,
       p: 0x02,
@@ -3459,7 +3459,7 @@ use super::*;
   
   #[test]
   fn test_jp_u16() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0xEF;
     mmu[0x1001] = 0xBE;
     let mmu = mmu;
@@ -3483,7 +3483,7 @@ use super::*;
 
   #[test]
   fn test_jp_nz_u16() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0xEF;
     mmu[0x1001] = 0xBE;
     let mmu = mmu;
@@ -3510,7 +3510,7 @@ use super::*;
 
   #[test]
   fn test_jp_nz_u16_while_zero() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0xEF;
     mmu[0x1001] = 0xBE;
     let mmu = mmu;
@@ -3565,7 +3565,7 @@ use super::*;
 
   #[test]
   fn test_call() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0xEF;
     mmu[0x1001] = 0xBE;
     let mmu = mmu;
@@ -3598,7 +3598,7 @@ use super::*;
 
   #[test]
   fn test_add_sp_i8() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0x11;
     let mmu = mmu;
 
@@ -3624,7 +3624,7 @@ use super::*;
 
   #[test]
   fn test_add_sp_i8_sub() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = (-0x11 as i8) as u8;
     let mmu = mmu;
 
@@ -3651,7 +3651,7 @@ use super::*;
 
   #[test]
   fn test_ld_hl_sp_i8() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0x11;
     let mmu = mmu;
 
@@ -3678,7 +3678,7 @@ use super::*;
 
   #[test]
   fn test_ld_a_mem_u16() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0x22;
     mmu[0x1001] = 0x11;
     mmu[0x1122] = 0x69;
@@ -3705,7 +3705,7 @@ use super::*;
 
   #[test]
   fn test_ld_mem_u16_a() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1000] = 0x22;
     mmu[0x1001] = 0x11;
     mmu[0x1122] = 0x33;
@@ -4216,7 +4216,7 @@ use super::*;
 
   #[test]
   fn test_res_4_hl() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1234] = 0xFF;
     let mut cpu = CPU { 
       registers: Registers {
@@ -4272,7 +4272,7 @@ use super::*;
 
   #[test]
   fn test_set_4_hl() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new_with_mbc3();
     mmu[0x1234] = 0x00;
     let mut cpu = CPU { 
       registers: Registers {
