@@ -8,6 +8,18 @@ impl<T: MBC> Catridge<T> {
   }
 }
 
+pub trait WritableMemory {
+  fn write(&mut self, address: usize, value: u8);
+}
+
+pub trait ReadableMemory {
+  fn read(&self, address: usize) -> &u8;
+}
+
+pub trait MBC: WritableMemory + ReadableMemory {
+
+}
+
 pub struct MBC0 {
   rom: [u8; 0x8000]
 }
@@ -99,14 +111,3 @@ impl MBC for MBC3 {
 
 }
 
-pub trait WritableMemory {
-  fn write(&mut self, address: usize, value: u8);
-}
-
-pub trait ReadableMemory {
-  fn read(&self, address: usize) -> &u8;
-}
-
-pub(crate) trait MBC: WritableMemory + ReadableMemory {
-
-}

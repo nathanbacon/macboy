@@ -5,6 +5,7 @@ use crate::cpu::CPU;
 mod registers;
 mod cpu;
 mod mmu;
+mod cartridge;
 
 fn main() {
     println!("Hello, world!");

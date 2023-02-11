@@ -1,5 +1,4 @@
-use crate::{registers::{Registers, self}, mmu::MMU, };
-use crate::cartridge::MBC;
+use crate::{registers::{Registers, self}, mmu::MMU, cartridge::MBC};
 
 pub struct CPU<T> where T: MBC {
   registers: Registers,
