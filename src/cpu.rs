@@ -38,12 +38,12 @@ macro_rules! four_cycle_memory_access {
     };
 }
 
-impl CPU {
+impl<T: MBC> CPU<T> {
   pub fn toggle_interrupts(&mut self, enabled: bool) {
     self.interrupt_enabled = enabled;
   }
 
-  pub fn new() -> CPU {
+  pub fn new() -> CPU<T> {
     CPU {
       registers: Registers::new(),
       mmu: MMU::new_with_mbc3(),
@@ -72,11 +72,11 @@ impl CPU {
     self.mmu.write(address, value);
   }
 
-  pub fn build_extended_table() -> Vec<fn(&mut CPU)> {
+  pub fn build_extended_table() -> Vec<fn(&mut CPU<T>)> {
     macro_rules! I {
         (RLC $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let mut dest = cpu.registers.$reg as u16;
               dest <<= 1;
               cpu.registers.zero(dest == 0);
@@ -713,7 +713,7 @@ impl CPU {
     ]
   }
 
-  pub fn build() -> Vec<fn(&mut CPU)> {
+  pub fn build() -> Vec<fn(&mut CPU<T>)> {
 
     fn sub_8_flags(dest: u8, src: u8) -> (u8, bool, bool) {
       let (res, carry) = dest.overflowing_sub(src);

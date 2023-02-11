@@ -4,8 +4,6 @@ use crate::gpu::GPU;
 use crate::cartridge::{Catridge, MBC, MBC3};
 
 pub struct MMU<T> where T: MBC {
-  bank0: [u8; 0x4000],
-  bank1: [u8; 0x4000],
   gpu: GPU,
   mbc: T,
 }
