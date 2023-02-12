@@ -1,4 +1,4 @@
-use crate::{registers::{Registers, self}, mmu::MMU, cartridge::MBC};
+use crate::{registers::{Registers, self}, mmu::MMU, cartridge::{MBC, MBC3}};
 
 pub struct CPU<T> where T: MBC {
   registers: Registers,
@@ -21,32 +21,27 @@ macro_rules! wide {
     };
 }
 
-macro_rules! four_cycle_memory_access {
-    ($reg: expr, $mmu:expr, $address: expr) => {
-      {
-        let address: u16 = $address;
-        let val = $mmu.read(address);
-        val
-      }
-    };
-    ($reg: expr, $mmu:expr, $address: expr, $value: expr) => {
-      {
-        let address: u16 = $address;
-        let val = $mmu.write(address, $value);
-        val
-      }
-    };
-}
-
 impl<T: MBC> CPU<T> {
   pub fn toggle_interrupts(&mut self, enabled: bool) {
     self.interrupt_enabled = enabled;
   }
 
-  pub fn new() -> CPU<T> {
+  pub fn new(mbc: T) -> CPU<T> {
     CPU {
       registers: Registers::new(),
-      mmu: MMU::new_with_mbc3(),
+      mmu: MMU::<T>::new(mbc),
+      table: CPU::build(),
+      extended_table: CPU::build_extended_table(),
+      interrupt_enabled: true,
+      prefix_mode: false,
+      ticks: 0,
+    }
+  }
+
+  pub fn new_with_mbc3() -> CPU<MBC3> {
+    CPU {
+      registers: Registers::new(),
+      mmu: MMU::<MBC3>::new_with_mbc3(),
       table: CPU::build(),
       extended_table: CPU::build_extended_table(),
       interrupt_enabled: true,
@@ -93,7 +88,7 @@ impl<T: MBC> CPU<T> {
         };
         (RLC (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let dest_address = wide!(cpu.registers, h, l);
               let mut dest = cpu.read_mem(dest_address) as u16;
               dest <<= 1;
@@ -111,7 +106,7 @@ impl<T: MBC> CPU<T> {
         };
         (RRC $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let mut dest = cpu.registers.$reg as u16;
               let mut carry_bit = dest & 0x01;
               cpu.registers.carry(carry_bit == 0x01);
@@ -130,7 +125,7 @@ impl<T: MBC> CPU<T> {
         };
         (RRC (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let dest_address = wide!(cpu.registers, h, l);
               let mut dest = cpu.read_mem(dest_address) as u16;
               let mut carry_bit = dest & 0x01;
@@ -150,7 +145,7 @@ impl<T: MBC> CPU<T> {
         };
         (RL $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let mut dest = cpu.registers.$reg as u16;
               dest <<= 1;
               if cpu.registers.get_carry() {
@@ -169,7 +164,7 @@ impl<T: MBC> CPU<T> {
         };
         (RL (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let dest_address = wide!(cpu.registers, h, l);
               let mut dest = cpu.read_mem(dest_address) as u16;
               dest <<= 1;
@@ -191,7 +186,7 @@ impl<T: MBC> CPU<T> {
         };
         (RR $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let mut dest = cpu.registers.$reg;
               let carry_bit = dest & 0x01;
               dest >>= 1;
@@ -209,7 +204,7 @@ impl<T: MBC> CPU<T> {
         };
         (RR (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let dest_address = wide!(cpu.registers, h, l);
               let mut dest = cpu.read_mem(dest_address);
               let carry_bit = dest & 0x01;
@@ -228,7 +223,7 @@ impl<T: MBC> CPU<T> {
         };
         (SLA $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let mut dest = cpu.registers.$reg as u16;
               dest <<= 1;
               cpu.registers.zero(dest == 0);
@@ -244,7 +239,7 @@ impl<T: MBC> CPU<T> {
         };
         (SLA (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let dest_address = wide!(cpu.registers, h, l);
               let mut dest = cpu.read_mem(dest_address) as u16;
               dest <<= 1;
@@ -261,7 +256,7 @@ impl<T: MBC> CPU<T> {
         };
         (SRA $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let dest = cpu.registers.$reg;
               let mut dest = dest as i8;
               let carry = (0x01 & dest) == 0x01;
@@ -277,7 +272,7 @@ impl<T: MBC> CPU<T> {
         };
         (SRA (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let dest_address = wide!(cpu.registers, h, l);
               let dest = cpu.read_mem(dest_address) as u16;
               let mut dest = dest as i8;
@@ -295,7 +290,7 @@ impl<T: MBC> CPU<T> {
         };
         (SRL $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let mut dest = cpu.registers.$reg;
               let carry = (0x01 & dest) == 0x01;
               dest >>= 1;
@@ -310,7 +305,7 @@ impl<T: MBC> CPU<T> {
         };
         (SRL (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let dest_address = wide!(cpu.registers, h, l);
               let mut dest = cpu.read_mem(dest_address);
               let carry = (0x01 & dest) == 0x01;
@@ -327,7 +322,7 @@ impl<T: MBC> CPU<T> {
         };
         (SWAP $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let byte = cpu.registers.$reg;
               let res = (byte >> 4) | (byte << 4);
               cpu.registers.zero(res == 0);
@@ -341,7 +336,7 @@ impl<T: MBC> CPU<T> {
         };
         (SWAP (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let address = wide!(cpu.registers, h, l);
               let byte = cpu.read_mem(address);
               let res = (byte >> 4) | (byte << 4);
@@ -356,7 +351,7 @@ impl<T: MBC> CPU<T> {
         };
         (BIT $bit:expr, $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let byte = cpu.registers.$reg;
               let bit_num = $bit as u8;
               let test_bit = 0x01 << bit_num;
@@ -371,7 +366,7 @@ impl<T: MBC> CPU<T> {
         };
         (BIT $bit:expr, (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let address = wide!(cpu.registers, h, l);
               let byte = cpu.read_mem(address);
               let bit_num = $bit as u8;
@@ -387,7 +382,7 @@ impl<T: MBC> CPU<T> {
         };
         (RES $bit:expr, $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let mut byte = cpu.registers.$reg;
               let bit_num = $bit as u8;
               let bit = 0x01 << bit_num;
@@ -400,7 +395,7 @@ impl<T: MBC> CPU<T> {
         };
         (RES $bit:expr, (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let address = wide!(cpu.registers, h, l);
               let mut byte = cpu.read_mem(address);
               let bit_num = $bit as u8;
@@ -414,7 +409,7 @@ impl<T: MBC> CPU<T> {
         };
         (SET $bit:expr, $reg:ident) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let mut byte = cpu.registers.$reg;
               let bit_num = $bit as u8;
               let bit = 0x01 << bit_num;
@@ -426,7 +421,7 @@ impl<T: MBC> CPU<T> {
         };
         (SET $bit:expr, (HL)) => {
           {
-            fn eval(cpu: &mut CPU) {
+            fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
               let address = wide!(cpu.registers, h, l);
               let mut byte = cpu.read_mem(address);
               let bit_num = $bit as u8;
@@ -776,7 +771,7 @@ impl<T: MBC> CPU<T> {
     macro_rules! I {
       (NOP) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(_cpu: &mut CPU<T>) where T: MBC {
             println!("NOP");
           }
           eval
@@ -784,7 +779,7 @@ impl<T: MBC> CPU<T> {
       };
       (INC [$dest_hi:ident $dest_lo:ident]) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let res = wide!(cpu.registers, $dest_hi, $dest_lo);
             let (res, _) = res.overflowing_add(1);
             wide!(cpu.registers, $dest_hi, $dest_lo, res, cpu);
@@ -794,7 +789,7 @@ impl<T: MBC> CPU<T> {
       };
       (INC $dest:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let res = cpu.registers.$dest;
             let (res, _, half_carry) = add_8_flags(res, 1);
             cpu.registers.negative(false);
@@ -807,7 +802,7 @@ impl<T: MBC> CPU<T> {
       };
       (INC (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let address = wide!(cpu.registers, h, l);
             let res = cpu.read_mem(address);
             let (res, _, half_carry) = add_8_flags(res, 1);
@@ -821,7 +816,7 @@ impl<T: MBC> CPU<T> {
       };
       (DEC $dest: ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let res: u8 = cpu.registers.$dest;
             cpu.registers.half_carry(res & 0x0F == 0);
             cpu.registers.negative(true);
@@ -834,7 +829,7 @@ impl<T: MBC> CPU<T> {
       };
       (DEC (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let address = wide!(cpu.registers, h, l);
             let res = cpu.read_mem(address);
             cpu.registers.half_carry(res & 0x0F == 0);
@@ -848,7 +843,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD SP, HL) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let hl = wide!(cpu.registers, h, l);
             wide!(cpu.registers, s, p, hl, cpu);
           }
@@ -857,7 +852,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD [$dest_hi:ident $dest_lo:ident], u16) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let v = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
             wide!(cpu.registers, $dest_hi, $dest_lo, v, cpu);
@@ -868,7 +863,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD sp, u16) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let v = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
             wide!(cpu.registers, s, p, v, cpu);
@@ -878,7 +873,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD $dest:ident, u8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let v = cpu.mmu.read(cpu.registers.pc);
             cpu.registers.pc += 1;
             cpu.registers.$dest = v;
@@ -888,7 +883,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD $dest:ident, (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let address = wide!(cpu.registers, h, l);
             let v = cpu.read_mem(address);
             cpu.registers.pc += 1;
@@ -899,7 +894,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD $dest:ident, $src:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             cpu.registers.$dest = cpu.registers.$src;
           }
           eval
@@ -907,7 +902,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD (u16), SP) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let dest_address = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
             let sp = wide!(cpu.registers, s, p);
@@ -921,7 +916,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD A, (u16)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src_address = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
             let src = cpu.read_mem(src_address);
@@ -932,7 +927,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD (u16), A) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let dest_address = cpu.read_mem_16(cpu.registers.pc);
             cpu.registers.pc += 2;
             let src = cpu.registers.a;
@@ -943,7 +938,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD (HL), u8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.pc;
             let src = cpu.read_mem(src);
             cpu.registers.pc += 1;
@@ -955,7 +950,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD (FF00+u8), A) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.a;
             let immed = cpu.mmu.read(cpu.registers.pc);
             cpu.registers.pc += 1;
@@ -968,7 +963,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD A, (FF00+u8)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let immed = cpu.mmu.read(cpu.registers.pc);
             cpu.registers.pc += 1;
             let src = immed as u16;
@@ -982,7 +977,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD (FF00+C), A) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.a;
             let dest_address = 0xFF00 | (cpu.registers.c as u16);
             cpu.write_mem(dest_address, src);
@@ -992,7 +987,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD A, (FF00+C)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = 0xFF00 | (cpu.registers.c as u16);
             let src = cpu.read_mem(src);
 
@@ -1003,7 +998,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD ([$dest_hi:ident $dest_lo:ident]), $src:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let dest_address = wide!(cpu.registers, $dest_hi, $dest_lo);
             let src = cpu.registers.$src;
             cpu.write_mem(dest_address, src);
@@ -1013,7 +1008,7 @@ impl<T: MBC> CPU<T> {
       };
       (RLCA) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let mut a = cpu.registers.a as u16;
             a <<= 1;
             cpu.registers.negative(false);
@@ -1029,7 +1024,7 @@ impl<T: MBC> CPU<T> {
       };
       (RLA) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let mut a = cpu.registers.a;
             let carry_bit = 0x80 & a;
             a <<= 1;
@@ -1047,7 +1042,7 @@ impl<T: MBC> CPU<T> {
       };
       (RRA) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let mut a = cpu.registers.a;
             let carry_bit = a & 0x01;
             a >>= 1;
@@ -1065,7 +1060,7 @@ impl<T: MBC> CPU<T> {
       };
       (RRCA) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let mut a = cpu.registers.a;
             let carry_bit = a & 0x01;
             cpu.registers.carry(carry_bit == 0x01);
@@ -1081,7 +1076,7 @@ impl<T: MBC> CPU<T> {
       };
       (ADD [$hi_d:ident $lo_d:ident], [$hi_s:ident $lo_s:ident]) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = wide!(cpu.registers, $hi_s, $lo_s) as u16;
             let dest = wide!(cpu.registers, $hi_d, $lo_d) as u16;
             let (res, carry) = src.overflowing_add(dest);
@@ -1098,7 +1093,7 @@ impl<T: MBC> CPU<T> {
       };
       (ADD SP, i8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.read_mem(cpu.registers.pc);
             cpu.registers.pc += 1;
             let src = src as i8;
@@ -1122,7 +1117,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD HL, SP+i8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.read_mem(cpu.registers.pc);
             cpu.registers.pc += 1;
             let src = src as i8;
@@ -1145,7 +1140,7 @@ impl<T: MBC> CPU<T> {
       };
       (ADD $dest:ident, u8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.mmu.read(cpu.registers.pc);
             cpu.registers.pc += 1;
             let dest = cpu.registers.$dest as u8;
@@ -1162,7 +1157,7 @@ impl<T: MBC> CPU<T> {
       };
       (ADD $dest:ident, $src:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.$src as u8;
             let dest = cpu.registers.$dest as u8;
             let (res, carry, half_carry) = add_8_flags(dest, src);
@@ -1178,7 +1173,7 @@ impl<T: MBC> CPU<T> {
       };
       (SUB A, u8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.read_mem(cpu.registers.pc);
             cpu.registers.pc += 1;
             let dest = cpu.registers.a;
@@ -1195,7 +1190,7 @@ impl<T: MBC> CPU<T> {
       };
       (SUB A, $src:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.$src as u8;
             let dest = cpu.registers.a;
             let (res, carry, half_carry) = sub_8_flags(dest, src);
@@ -1211,7 +1206,7 @@ impl<T: MBC> CPU<T> {
       };
       (SUB A, (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = wide!(cpu.registers, h, l);
             let src = cpu.read_mem(src);
             let dest = cpu.registers.a;
@@ -1227,7 +1222,7 @@ impl<T: MBC> CPU<T> {
       };
       (SBC A, u8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.read_mem(cpu.registers.pc);
             cpu.registers.pc += 1;
             let dest = cpu.registers.a;
@@ -1239,7 +1234,7 @@ impl<T: MBC> CPU<T> {
       };
       (SBC A, $src:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.$src;
             let dest = cpu.registers.a;
             let res = sbc_8(&mut cpu.registers, dest, src);
@@ -1250,7 +1245,7 @@ impl<T: MBC> CPU<T> {
       };
       (SBC A, (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = wide!(cpu.registers, h, l);
             let src = cpu.read_mem(src);
             let dest = cpu.registers.a;
@@ -1262,7 +1257,7 @@ impl<T: MBC> CPU<T> {
       };
       (ADC A, u8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.read_mem(cpu.registers.pc);
             cpu.registers.pc += 1;
             let dest = cpu.registers.a;
@@ -1274,7 +1269,7 @@ impl<T: MBC> CPU<T> {
       };
       (ADC A, $src:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.$src;
             let dest = cpu.registers.a;
             let res = adc_8(&mut cpu.registers, dest, src);
@@ -1285,7 +1280,7 @@ impl<T: MBC> CPU<T> {
       };
       (ADD $dest:ident, (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = wide!(cpu.registers, h, l);
             let src = cpu.read_mem(src);
             let dest = cpu.registers.$dest;
@@ -1300,7 +1295,7 @@ impl<T: MBC> CPU<T> {
       };
       (ADC A, (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = wide!(cpu.registers, h, l);
             let src = cpu.read_mem(src);
             let dest = cpu.registers.a;
@@ -1312,7 +1307,7 @@ impl<T: MBC> CPU<T> {
       };
       (AND A, u8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.mmu.read(cpu.registers.pc);
             cpu.registers.pc += 1;
             let mut a = cpu.registers.a;
@@ -1329,7 +1324,7 @@ impl<T: MBC> CPU<T> {
       };
       (AND A, $src:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.$src as u8;
             let mut a = cpu.registers.a;
             a &= src;
@@ -1345,7 +1340,7 @@ impl<T: MBC> CPU<T> {
       };
       (AND A, (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = wide!(cpu.registers, h, l);
             let src = cpu.read_mem(src);
             let mut a = cpu.registers.a;
@@ -1362,7 +1357,7 @@ impl<T: MBC> CPU<T> {
       };
       (XOR A, u8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.mmu.read(cpu.registers.pc);
             cpu.registers.pc += 1;
             let mut a = cpu.registers.a;
@@ -1379,7 +1374,7 @@ impl<T: MBC> CPU<T> {
       };
       (XOR A, $src:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.$src as u8;
             let mut a = cpu.registers.a;
             a ^= src;
@@ -1395,7 +1390,7 @@ impl<T: MBC> CPU<T> {
       };
       (XOR A, (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = wide!(cpu.registers, h, l);
             let src = cpu.read_mem(src);
             let mut a = cpu.registers.a;
@@ -1412,7 +1407,7 @@ impl<T: MBC> CPU<T> {
       };
       (OR A, u8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.mmu.read(cpu.registers.pc);
             cpu.registers.pc += 1;
 
@@ -1426,7 +1421,7 @@ impl<T: MBC> CPU<T> {
       };
       (OR A, $src:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.$src as u8;
             let dest = cpu.registers.a;
             let res = or_8(&mut cpu.registers, dest, src);
@@ -1438,7 +1433,7 @@ impl<T: MBC> CPU<T> {
       };
       (OR A, (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = wide!(cpu.registers, h, l);
             let src = cpu.read_mem(src);
             let dest = cpu.registers.a;
@@ -1450,7 +1445,7 @@ impl<T: MBC> CPU<T> {
       };
       (CP A, u8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.mmu.read(cpu.registers.pc);
             cpu.registers.pc += 1;
             let dest = cpu.registers.a;
@@ -1467,7 +1462,7 @@ impl<T: MBC> CPU<T> {
       };
       (CP A, $src:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = cpu.registers.$src;
             let dest = cpu.registers.a;
             let (res, carry) = dest.overflowing_sub(src);
@@ -1484,7 +1479,7 @@ impl<T: MBC> CPU<T> {
       };
       (CP A, (HL)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src = wide!(cpu.registers, h, l);
             let src = cpu.read_mem(src);
             let dest = cpu.registers.a;
@@ -1501,7 +1496,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD $dest:ident, ([$src_hi:ident $src_lo:ident])) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let src_addr = wide!(cpu.registers, $src_hi, $src_lo);
             let src = cpu.read_mem(src_addr);
             cpu.registers.$dest = src;
@@ -1511,7 +1506,7 @@ impl<T: MBC> CPU<T> {
       };
       (DEC [$src_hi:ident $src_lo:ident]) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let res = wide!(cpu.registers, b, c);
             let (res, _) = res.overflowing_sub(1);
             wide!(cpu.registers, b, c, res, cpu);
@@ -1521,7 +1516,7 @@ impl<T: MBC> CPU<T> {
       };
       (STOP) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             println!("STOP");
           }
           eval
@@ -1529,7 +1524,7 @@ impl<T: MBC> CPU<T> {
       };
       (JR i8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let immed = cpu.read_mem(cpu.registers.pc) as i8;
             cpu.registers.pc += 1;
             let immed = i16::from(immed);
@@ -1543,7 +1538,7 @@ impl<T: MBC> CPU<T> {
       };
       (JR NZ, i8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let immed = cpu.read_mem(cpu.registers.pc) as i8;
             cpu.registers.pc += 1;
             let not_zero = !cpu.registers.get_zero();
@@ -1562,7 +1557,7 @@ impl<T: MBC> CPU<T> {
       };
       (JR NC, i8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let immed = cpu.read_mem(cpu.registers.pc) as i8;
             cpu.registers.pc += 1;
             let not_carry = !cpu.registers.get_carry();
@@ -1581,7 +1576,7 @@ impl<T: MBC> CPU<T> {
       };
       (JR Z, i8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let immed = cpu.read_mem(cpu.registers.pc) as i8;
             cpu.registers.pc += 1;
             let zero = cpu.registers.get_zero();
@@ -1600,7 +1595,7 @@ impl<T: MBC> CPU<T> {
       };
       (JR C, i8) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let immed = cpu.mmu.read(cpu.registers.pc) as i8;
             cpu.registers.pc += 1;
             let carry = cpu.registers.get_carry();
@@ -1619,7 +1614,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD (HL+), a) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let hl = wide!(cpu.registers, h, l);
             let a = cpu.registers.a;
             cpu.write_mem(hl, a);
@@ -1630,7 +1625,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD (HL-), a) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let hl = wide!(cpu.registers, h, l);
             let a = cpu.registers.a;
             cpu.write_mem(hl, a);
@@ -1641,7 +1636,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD a, (HL+)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let hl = wide!(cpu.registers, h, l);
             let v = cpu.read_mem(hl);
             cpu.registers.a = v;
@@ -1652,7 +1647,7 @@ impl<T: MBC> CPU<T> {
       };
       (LD a, (HL-)) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let hl = wide!(cpu.registers, h, l);
             let v = cpu.read_mem(hl);
             cpu.registers.a = v;
@@ -1663,7 +1658,7 @@ impl<T: MBC> CPU<T> {
       };
       (DAA) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let mut a = u16::from(cpu.registers.a);
             let mut should_carry = false;
             if !cpu.registers.get_negative() {
@@ -1698,14 +1693,14 @@ impl<T: MBC> CPU<T> {
       };
       (HALT) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
           }
           eval
         }
       };
       (CPL) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             cpu.registers.a = !cpu.registers.a;
             cpu.registers.negative(true);
             cpu.registers.half_carry(true);
@@ -1715,7 +1710,7 @@ impl<T: MBC> CPU<T> {
       }; 
       (SCF) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             cpu.registers.negative(false);
             cpu.registers.half_carry(false);
             cpu.registers.carry(true);
@@ -1725,7 +1720,7 @@ impl<T: MBC> CPU<T> {
       };
       (CCF) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             cpu.registers.negative(false);
             cpu.registers.half_carry(false);
             let carry = cpu.registers.get_carry();
@@ -1736,7 +1731,7 @@ impl<T: MBC> CPU<T> {
       };
       (POP [$src_hi:ident $src_lo:ident]) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let mut sp = wide!(cpu.registers, s, p);
             let lo = cpu.read_mem(sp);
             sp += 1;
@@ -1752,7 +1747,7 @@ impl<T: MBC> CPU<T> {
       };
       (PUSH [$src_hi:ident $src_lo:ident]) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let mut sp = wide!(cpu.registers, s, p);
             let hi = cpu.registers.$src_hi;
             let lo = cpu.registers.$src_lo;
@@ -1767,7 +1762,7 @@ impl<T: MBC> CPU<T> {
       };
       (RET) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let mut sp = wide!(cpu.registers, s, p);
             let lo = cpu.read_mem(sp) as u16;
             sp += 1;
@@ -1785,7 +1780,7 @@ impl<T: MBC> CPU<T> {
       };
       (RETI) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let mut sp = wide!(cpu.registers, s, p);
             let lo = cpu.read_mem(sp) as u16;
             sp += 1;
@@ -1805,7 +1800,7 @@ impl<T: MBC> CPU<T> {
       };
       (EI) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             cpu.toggle_interrupts(true);
           }
           eval
@@ -1813,7 +1808,7 @@ impl<T: MBC> CPU<T> {
       };
       (DI) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             cpu.toggle_interrupts(false);
           }
           eval
@@ -1821,7 +1816,7 @@ impl<T: MBC> CPU<T> {
       };
       (RET $condition:ident) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             if (!cpu.registers.$condition()) {
               cpu.ticks += 4;
               return;
@@ -1844,7 +1839,7 @@ impl<T: MBC> CPU<T> {
       };
       (JP $condition:ident, u16) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             if (!cpu.registers.$condition()) {
               // skip past the immediate
               cpu.registers.pc += 2;
@@ -1867,7 +1862,7 @@ impl<T: MBC> CPU<T> {
       };
       (CALL u16) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             // read immediate into call_address
             let mut pc = cpu.registers.pc;
             let lo = cpu.read_mem(pc) as u16;
@@ -1894,7 +1889,7 @@ impl<T: MBC> CPU<T> {
       };
       (CALL $condition:ident, u16) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             if (!cpu.registers.$condition()) {
               // skip past the immediate
               cpu.registers.pc += 2;
@@ -1926,7 +1921,7 @@ impl<T: MBC> CPU<T> {
       };
       (JP u16) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let mut pc = cpu.registers.pc;
             let lo = cpu.read_mem(pc) as u16;
             pc += 1;
@@ -1942,7 +1937,7 @@ impl<T: MBC> CPU<T> {
       };
       (JP HL) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let hl = wide!(cpu.registers, h, l);
             cpu.registers.pc = hl;
           }
@@ -1951,7 +1946,7 @@ impl<T: MBC> CPU<T> {
       };
       (RST $nn:expr) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             let pc = cpu.registers.pc;
             let mut sp = wide!(cpu.registers, s, p);
             sp -= 1;
@@ -1972,7 +1967,7 @@ impl<T: MBC> CPU<T> {
       };
       (PREFIX CB) => {
         {
-          fn eval(cpu: &mut CPU) {
+          fn eval<T>(cpu: &mut CPU<T>) where T: MBC {
             cpu.prefix_mode = true;
           }
           eval
@@ -2279,17 +2274,17 @@ use super::*;
 
   #[test]
   fn test_ld_bc_word() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x0000, 0xEF);
-    mmu.write(0x0001, 0xBE);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0xEF);
+    mmu.write(0xA001, 0xBE);
 
     let mut cpu = CPU { 
       registers: Registers {
-        pc: 0x0000,
+        pc: 0xA000,
         ..Registers::new()
       },
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x01);
@@ -2300,16 +2295,16 @@ use super::*;
 
   #[test]
   fn test_ld_b_u8() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x0000, 0x69);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0x69);
 
     let mut cpu = CPU { 
       registers: Registers {
-        pc: 0x0000,
+        pc: 0xA000,
         ..Registers::new()
       },
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x06);
@@ -2328,7 +2323,7 @@ use super::*;
         b: 0x19,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x80);
@@ -2349,7 +2344,7 @@ use super::*;
         b: 0x99,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x80);
@@ -2371,7 +2366,7 @@ use super::*;
         c: 0x69,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x41);
@@ -2382,26 +2377,26 @@ use super::*;
 
   #[test]
   fn test_ld_mem_bc_a() {
-    let mut mmu = MMU::new_with_mbc3();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
     mmu.write(0x0000, 0x34);
-    mmu.write(0x0001, 0x12);
+    mmu.write(0x0001, 0xA2);
 
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x0000,
         a: 0x69,
-        b: 0x12,
+        b: 0xA2,
         c: 0x34,
         ..Registers::new()
       },
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x02);
 
     assert_eq!(cpu.ticks, 8);
-    assert_eq!(cpu.mmu.read(0x1234), 0x69);
+    assert_eq!(cpu.mmu.read(0xA234), 0x69);
   }
 
   #[test]
@@ -2413,7 +2408,7 @@ use super::*;
         c: 0xFF,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x03);
@@ -2430,7 +2425,7 @@ use super::*;
         b: 0x68,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x04);
@@ -2449,7 +2444,7 @@ use super::*;
         b: 0xFF,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x04);
@@ -2468,7 +2463,7 @@ use super::*;
         b: 0x0F,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x04);
@@ -2482,23 +2477,23 @@ use super::*;
 
   #[test]
   fn test_inc_mem_hl() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1234, 0x69 - 1);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA234, 0x69 - 1);
     let mut cpu = CPU { 
       registers: Registers {
-        h: 0x12,
+        h: 0xA2,
         l: 0x34,
         f: 0xF0,
         ..Registers::new()
       },
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x34);
 
     assert_eq!(cpu.ticks, 12);
-    let byte = cpu.mmu.read(0x1234);
+    let byte = cpu.mmu.read(0xA234);
     assert_eq!(byte, 0x69);
     assert!(!cpu.registers.get_negative());
     assert!(!cpu.registers.get_zero());
@@ -2512,7 +2507,7 @@ use super::*;
         b: 0x6A,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x05);
@@ -2528,7 +2523,7 @@ use super::*;
         a: 0b11000000,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x07);
@@ -2545,7 +2540,7 @@ use super::*;
         f: 0,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x17);
@@ -2566,7 +2561,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x17);
@@ -2587,7 +2582,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x17);
@@ -2604,7 +2599,7 @@ use super::*;
         a: 0b10000001,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x1F);
@@ -2623,7 +2618,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x0F);
@@ -2635,21 +2630,25 @@ use super::*;
 
   #[test]
   fn test_ld_u16_sp() {
-    let mut cpu = CPU { 
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0x69);
+    mmu.write(0xA001, 0xA0);
+    let mut cpu = CPU {
       registers: Registers {
-        pc: 0x00,
+        pc: 0xA000,
         s: 0xBE,
         p: 0xEF,
         ..Registers::new()
       },
-      ..CPU::new()
+      mmu,
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x08);
 
     assert_eq!(cpu.ticks, 20);
-    assert_eq!(cpu.mmu.read(0x0000), 0xEF);
-    assert_eq!(cpu.mmu.read(0x0001), 0xBE);
+    assert_eq!(cpu.mmu.read(0xA069), 0xEF);
+    assert_eq!(cpu.mmu.read(0xA06A), 0xBE);
   }
 
   #[test]
@@ -2663,7 +2662,7 @@ use super::*;
         c: 0xEF,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x09);
@@ -2675,19 +2674,19 @@ use super::*;
 
   #[test]
   fn test_ld_a_bc_() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1234, 0x69);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA234, 0x69);
 
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x00,
         a: 0,
-        b: 0x12,
+        b: 0xA2,
         c: 0x34,
         ..Registers::new()
       },
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x0A);
@@ -2706,7 +2705,7 @@ use super::*;
         c: 0x00,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x0B);
@@ -2718,47 +2717,47 @@ use super::*;
 
   #[test]
   fn test_jr_i8() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x0010, 0x05);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA010, 0x05);
     let mut cpu = CPU { 
       registers: Registers {
-        pc: 0x0010,
+        pc: 0xA010,
         ..Registers::new()
       },
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x18);
 
     assert_eq!(cpu.ticks, 12);
-    assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
+    assert_eq!(cpu.registers.pc, 0xA016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
   }
 
   #[test]
   fn test_jr_i8_negative() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x0010, i8::from(-5) as u8);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA010, i8::from(-5) as u8);
     let mut cpu = CPU { 
       registers: Registers {
-        pc: 0x0010,
+        pc: 0xA010,
         ..Registers::new()
       },
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x18);
 
-    assert_eq!(cpu.registers.pc, 0x0010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0010 - 5 + 1);
+    assert_eq!(cpu.registers.pc, 0xA010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0xA010 - 5 + 1);
   }
 
   #[test]
   fn test_jr_nz_i8_zero() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x0010, 0x05);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA010, 0x05);
     let mut registers = Registers {
-      pc: 0x0010,
+      pc: 0xA010,
       ..Registers::new()
     };
     registers.zero(true);
@@ -2766,21 +2765,21 @@ use super::*;
     let mut cpu = CPU { 
       registers,
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x20);
 
     assert_eq!(cpu.ticks, 8);
-    assert_eq!(cpu.registers.pc, 0x0011, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0011);
+    assert_eq!(cpu.registers.pc, 0xA011, "{:#04x} != {:#04x}", cpu.registers.pc, 0xA011);
   }
 
   #[test]
   fn test_jr_nz_i8_not_zero() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x0010, 0x05);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA010, 0x05);
     let mut registers = Registers {
-      pc: 0x0010,
+      pc: 0xA010,
       ..Registers::new()
     };
     registers.zero(false);
@@ -2788,21 +2787,21 @@ use super::*;
     let mut cpu = CPU { 
       registers,
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x20);
 
     assert_eq!(cpu.ticks, 12);
-    assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
+    assert_eq!(cpu.registers.pc, 0xA016, "{:#04x} != {:#04x}", cpu.registers.pc, 0xA016);
   }
 
   #[test]
   fn test_jr_nz_i8_not_zero_subtraction() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x0010, -5i8 as u8);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA010, -5i8 as u8);
     let mut registers = Registers {
-      pc: 0x0010,
+      pc: 0xA010,
       ..Registers::new()
     };
     registers.zero(false);
@@ -2810,21 +2809,21 @@ use super::*;
     let mut cpu = CPU { 
       registers,
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x20);
 
     assert_eq!(cpu.ticks, 12);
-    assert_eq!(cpu.registers.pc, 0x0010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0010 - 5 + 1);
+    assert_eq!(cpu.registers.pc, 0xA010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0xA010 - 5 + 1);
   }
 
   #[test]
   fn test_jr_z_i8_zero() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x0010, 0x05);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA010, 0x05);
     let mut registers = Registers {
-      pc: 0x0010,
+      pc: 0xA010,
       ..Registers::new()
     };
     registers.zero(true);
@@ -2832,21 +2831,21 @@ use super::*;
     let mut cpu = CPU { 
       registers,
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x28);
 
     assert_eq!(cpu.ticks, 12);
-    assert_eq!(cpu.registers.pc, 0x0016, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0016);
+    assert_eq!(cpu.registers.pc, 0xA016, "{:#04x} != {:#04x}", cpu.registers.pc, 0xA016);
   }
 
   #[test]
   fn test_jr_z_i8_zero_subtraction() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x0010, -5i8 as u8);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA010, -5i8 as u8);
     let mut registers = Registers {
-      pc: 0x0010,
+      pc: 0xA010,
       ..Registers::new()
     };
     registers.zero(true);
@@ -2854,18 +2853,18 @@ use super::*;
     let mut cpu = CPU { 
       registers,
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x28);
 
     assert_eq!(cpu.ticks, 12);
-    assert_eq!(cpu.registers.pc, 0x0010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0x0010 - 5 + 1);
+    assert_eq!(cpu.registers.pc, 0xA010 - 5 + 1, "{:#04x} != {:#04x}", cpu.registers.pc, 0xA010 - 5 + 1);
   }
 
   #[test]
   fn test_jr_z_i8_not_zero() {
-    let mut mmu = MMU::new_with_mbc3();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
     mmu.write(0x0010, 0x05);
     let mut registers = Registers {
       pc: 0x0010,
@@ -2876,7 +2875,7 @@ use super::*;
     let mut cpu = CPU { 
       registers,
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x28);
@@ -2892,7 +2891,7 @@ use super::*;
         a: 0b10101010,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x2F);
@@ -2911,7 +2910,7 @@ use super::*;
     registers.negative(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x3F);
@@ -2930,7 +2929,7 @@ use super::*;
     registers.negative(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x37);
@@ -2950,7 +2949,7 @@ use super::*;
         b: 0x56,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x80);
@@ -2969,7 +2968,7 @@ use super::*;
         b: 0x08,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x80);
@@ -2990,7 +2989,7 @@ use super::*;
         b: 0x80,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x80);
@@ -3004,18 +3003,18 @@ use super::*;
 
   #[test]
   fn test_add_a_hl() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1234, 0x13);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA234, 0x13);
 
     let mut cpu = CPU { 
       registers: Registers {
         a: 0x56,
-        h: 0x12,
+        h: 0xA2,
         l: 0x34,
         ..Registers::new()
       },
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x86);
@@ -3033,7 +3032,7 @@ use super::*;
         l: 0b10001001,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x85);
@@ -3053,7 +3052,7 @@ use super::*;
         l: 0b00000001,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x85);
@@ -3077,7 +3076,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x88);
@@ -3096,7 +3095,7 @@ use super::*;
         b: 0x33,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x90);
@@ -3113,7 +3112,7 @@ use super::*;
         b: 1,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xB8);
@@ -3131,7 +3130,7 @@ use super::*;
         b: 1,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x90);
@@ -3150,7 +3149,7 @@ use super::*;
         b: 0b00010000,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x90);
@@ -3168,7 +3167,7 @@ use super::*;
         b: 0b00001000,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x90);
@@ -3186,7 +3185,7 @@ use super::*;
         b: 0b00010000,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xB8);
@@ -3208,7 +3207,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x98);
@@ -3229,7 +3228,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0x98);
@@ -3246,7 +3245,7 @@ use super::*;
         b: 0b00001111,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xA0);
@@ -3265,7 +3264,7 @@ use super::*;
         b: 0b00001111,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xB0);
@@ -3284,7 +3283,7 @@ use super::*;
         b: 0b01011111,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xA8);
@@ -3303,7 +3302,7 @@ use super::*;
         a: 0b10101010,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xAF);
@@ -3317,12 +3316,12 @@ use super::*;
 
   #[test]
   fn test_ret() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0xEF);
+    mmu.write(0xA001, 0xBE);
     let mmu = mmu;
     let registers = Registers {
-      s: 0x10,
+      s: 0xA0,
       p: 0x00,
       ..Registers::new()
     };
@@ -3330,7 +3329,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xC9);
@@ -3338,17 +3337,17 @@ use super::*;
     assert_eq!(cpu.ticks, 16);
     assert_eq!(cpu.registers.pc, 0xBEEF);
     let sp = wide!(cpu.registers, s, p);
-    assert_eq!(sp, 0x1002);
+    assert_eq!(sp, 0xA002);
   }
 
   #[test]
   fn test_ret_nz() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0xEF);
+    mmu.write(0xA001, 0xBE);
     let mmu = mmu;
     let mut registers = Registers {
-      s: 0x10,
+      s: 0xA0,
       p: 0x00,
       ..Registers::new()
     };
@@ -3358,7 +3357,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xC0);
@@ -3366,18 +3365,18 @@ use super::*;
     assert_eq!(cpu.ticks, 20);
     assert_eq!(cpu.registers.pc, 0xBEEF);
     let sp = wide!(cpu.registers, s, p);
-    assert_eq!(sp, 0x1002);
+    assert_eq!(sp, 0xA002);
   }
 
 
   #[test]
   fn test_ret_nz_while_zero() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0xEF);
+    mmu.write(0xA001, 0xBE);
     let mmu = mmu;
     let mut registers = Registers {
-      s: 0x10,
+      s: 0xA0,
       p: 0x00,
       pc: 0x4200,
       ..Registers::new()
@@ -3388,7 +3387,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xC0);
@@ -3396,17 +3395,17 @@ use super::*;
     assert_eq!(cpu.ticks, 8);
     assert_eq!(cpu.registers.pc, 0x4200);
     let sp = wide!(cpu.registers, s, p);
-    assert_eq!(sp, 0x1000);
+    assert_eq!(sp, 0xA000);
   }
 
   #[test]
   fn test_pop_bc() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0xEF);
+    mmu.write(0xA001, 0xBE);
     let mmu = mmu;
     let registers = Registers {
-      s: 0x10,
+      s: 0xA0,
       p: 0x00,
       ..Registers::new()
     };
@@ -3414,7 +3413,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xC1);
@@ -3423,14 +3422,14 @@ use super::*;
     let bc = wide!(cpu.registers, b, c);
     assert_eq!(bc, 0xBEEF, "{:#06x} != {:#06x}", bc, 0xBEEF);
     let sp = wide!(cpu.registers, s, p);
-    assert_eq!(sp, 0x1002,  "{:#06x} != {:#06x}", sp, 0x1002);
+    assert_eq!(sp, 0xA002,  "{:#06x} != {:#06x}", sp, 0xA002);
   }
 
   #[test]
   fn test_push_bc() {
-    let mmu = MMU::new_with_mbc3();
+    let mmu = MMU::<MBC3>::new_with_mbc3();
     let registers = Registers {
-      s: 0x10,
+      s: 0xA0,
       p: 0x02,
       b: 0xBE,
       c: 0xEF,
@@ -3440,35 +3439,35 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xC5);
 
     assert_eq!(cpu.ticks, 16);
-    let hi = cpu.mmu.read(0x1001) as u16;
-    let lo = cpu.mmu.read(0x1000) as u16;
+    let hi = cpu.mmu.read(0xA001) as u16;
+    let lo = cpu.mmu.read(0xA000) as u16;
     let v = (hi << 8) | lo;
     assert_eq!(v, 0xBEEF, "{:#06x} != {:#06x}", v, 0xBEEF);
     let sp = wide!(cpu.registers, s, p);
-    assert_eq!(sp, 0x1000,  "{:#06x} != {:#06x}", sp, 0x1000);
+    assert_eq!(sp, 0xA000,  "{:#06x} != {:#06x}", sp, 0xA000);
   }
   
   #[test]
   fn test_jp_u16() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0xEF);
+    mmu.write(0xA001, 0xBE);
     let mmu = mmu;
     let registers = Registers {
-      pc: 0x1000,
+      pc: 0xA000,
       ..Registers::new()
     };
 
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xC3);
@@ -3480,12 +3479,12 @@ use super::*;
 
   #[test]
   fn test_jp_nz_u16() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0xEF);
+    mmu.write(0xA001, 0xBE);
     let mmu = mmu;
     let mut registers = Registers {
-      pc: 0x1000,
+      pc: 0xA000,
       ..Registers::new()
     };
 
@@ -3495,7 +3494,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xC2);
@@ -3507,12 +3506,12 @@ use super::*;
 
   #[test]
   fn test_jp_nz_u16_while_zero() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0xEF);
+    mmu.write(0xA001, 0xBE);
     let mmu = mmu;
     let mut registers = Registers {
-      pc: 0x1000,
+      pc: 0xA000,
       ..Registers::new()
     };
 
@@ -3522,28 +3521,28 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xC2);
 
     assert_eq!(cpu.ticks, 12);
     let pc = cpu.registers.pc;
-    assert_eq!(pc, 0x1002, "{:#06x} != {:#06x}", pc, 0x1002);
+    assert_eq!(pc, 0xA002, "{:#06x} != {:#06x}", pc, 0xA002);
   }
 
   #[test]
   fn test_rst_18h() {
     let registers = Registers {
       pc: 0xBEEF,
-      s: 0x10,
+      s: 0xA0,
       p: 0x02,
       ..Registers::new()
     };
 
     let mut cpu = CPU {
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xDF);
@@ -3552,31 +3551,31 @@ use super::*;
 
     assert_eq!(cpu.registers.pc, 0x0018);
     let sp = wide!(cpu.registers, s, p);
-    assert_eq!(sp, 0x1000);
+    assert_eq!(sp, 0xA000);
 
-    let lo = cpu.mmu.read(0x1000) as u16;
-    let hi = cpu.mmu.read(0x1001) as u16;
+    let lo = cpu.mmu.read(0xA000) as u16;
+    let hi = cpu.mmu.read(0xA001) as u16;
     let v = (hi << 8) | lo;
     assert_eq!(v, 0xBEEF);
   }
 
   #[test]
   fn test_call() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0xEF);
-    mmu.write(0x1001, 0xBE);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0xEF);
+    mmu.write(0xA001, 0xBE);
     let mmu = mmu;
     let registers = Registers {
-      s: 0x20,
+      s: 0xB0,
       p: 0x02,
-      pc: 0x1000,
+      pc: 0xA000,
       ..Registers::new()
     };
 
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xCD);
@@ -3585,57 +3584,57 @@ use super::*;
 
     assert_eq!(cpu.registers.pc, 0xBEEF);
     let sp = wide!(cpu.registers, s, p);
-    assert_eq!(sp, 0x2000);
+    assert_eq!(sp, 0xB000);
 
-    let lo = cpu.mmu.read(0x2000) as u16;
-    let hi = cpu.mmu.read(0x2001) as u16;
+    let lo = cpu.mmu.read(0xB000) as u16;
+    let hi = cpu.mmu.read(0xB001) as u16;
     let old_pc = (hi << 8) | lo;
-    assert_eq!(old_pc, 0x1002);
+    assert_eq!(old_pc, 0xA002);
   }
 
   #[test]
   fn test_add_sp_i8() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0x11);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0x11);
     let mmu = mmu;
 
     let registers = Registers {
       s: 0xAB,
       p: 0x22,
-      pc: 0x1000,
+      pc: 0xA000,
       ..Registers::new()
     };
 
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xE8);
 
     let sp = wide!(cpu.registers, s, p);
     assert_eq!(sp, 0xAB33);
-    assert_eq!(cpu.registers.pc, 0x1001);
+    assert_eq!(cpu.registers.pc, 0xA001);
   }
 
   #[test]
   fn test_add_sp_i8_sub() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, (-0x11 as i8) as u8);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, (-0x11 as i8) as u8);
     let mmu = mmu;
 
     let registers = Registers {
       s: 0xAB,
       p: 0x22,
-      pc: 0x1000,
+      pc: 0xA000,
       ..Registers::new()
     };
 
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xE8);
@@ -3643,26 +3642,26 @@ use super::*;
     assert_eq!(cpu.ticks, 16);
     let sp = wide!(cpu.registers, s, p);
     assert_eq!(sp, 0xAB11);
-    assert_eq!(cpu.registers.pc, 0x1001);
+    assert_eq!(cpu.registers.pc, 0xA001);
   }
 
   #[test]
   fn test_ld_hl_sp_i8() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0x11);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0x11);
     let mmu = mmu;
 
     let registers = Registers {
       s: 0xAB,
       p: 0x22,
-      pc: 0x1000,
+      pc: 0xA000,
       ..Registers::new()
     };
 
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xF8);
@@ -3670,26 +3669,26 @@ use super::*;
     assert_eq!(cpu.ticks, 12);
     let hl = wide!(cpu.registers, h, l);
     assert_eq!(hl, 0xAB33, "{:#06x} != {:#06x}", hl, 0xAB33);
-    assert_eq!(cpu.registers.pc, 0x1001, "{:#06x} != {:#06x}", cpu.registers.pc, 0x1001);
+    assert_eq!(cpu.registers.pc, 0xA001, "{:#06x} != {:#06x}", cpu.registers.pc, 0xA001);
   }
 
   #[test]
   fn test_ld_a_mem_u16() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0x22);
-    mmu.write(0x1001, 0x11);
-    mmu.write(0x1122, 0x69);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0x22);
+    mmu.write(0xA001, 0xA1);
+    mmu.write(0xA122, 0x69);
     let mmu = mmu;
 
     let registers = Registers {
-      pc: 0x1000,
+      pc: 0xA000,
       ..Registers::new()
     };
 
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xFA);
@@ -3697,19 +3696,19 @@ use super::*;
     assert_eq!(cpu.ticks, 16);
     let a = cpu.registers.a;
     assert_eq!(a, 0x69, "{:#04x} != {:#04x}", a, 0x69);
-    assert_eq!(cpu.registers.pc, 0x1002, "{:#06x} != {:#06x}", cpu.registers.pc, 0x1002);
+    assert_eq!(cpu.registers.pc, 0xA002, "{:#06x} != {:#06x}", cpu.registers.pc, 0xA002);
   }
 
   #[test]
   fn test_ld_mem_u16_a() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1000, 0x22);
-    mmu.write(0x1001, 0x11);
-    mmu.write(0x1122, 0x33);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA000, 0x22);
+    mmu.write(0xA001, 0xA1);
+    mmu.write(0xA122, 0x33);
     let mmu = mmu;
 
     let registers = Registers {
-      pc: 0x1000,
+      pc: 0xA000,
       a: 0x69,
       ..Registers::new()
     };
@@ -3717,15 +3716,15 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     };
 
     cpu.call(0xEA);
 
     assert_eq!(cpu.ticks, 16);
-    let dest = cpu.mmu.read(0x1122);
+    let dest = cpu.mmu.read(0xA122);
     assert_eq!(dest, 0x69, "{:#04x} != {:#04x}", dest, 0x69);
-    assert_eq!(cpu.registers.pc, 0x1002, "{:#06x} != {:#06x}", cpu.registers.pc, 0x1002);
+    assert_eq!(cpu.registers.pc, 0xA002, "{:#06x} != {:#06x}", cpu.registers.pc, 0xA002);
   }
 
   #[test]
@@ -3735,7 +3734,7 @@ use super::*;
         b: 0b11000000,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3755,7 +3754,7 @@ use super::*;
         b: 0b00000000,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3776,7 +3775,7 @@ use super::*;
         b: 0b00000100,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3797,7 +3796,7 @@ use super::*;
         b: 0b10000001,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3821,7 +3820,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3845,7 +3844,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3869,7 +3868,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3893,7 +3892,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3916,7 +3915,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3937,7 +3936,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3958,7 +3957,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -3979,7 +3978,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4002,7 +4001,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4025,7 +4024,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4048,7 +4047,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4066,7 +4065,7 @@ use super::*;
         b: 0b11101000,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4087,7 +4086,7 @@ use super::*;
         b: 0,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4108,7 +4107,7 @@ use super::*;
         b: 0b10000001,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4127,7 +4126,7 @@ use super::*;
         b: 0b10000000,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4146,7 +4145,7 @@ use super::*;
         b: 0b00010000,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4165,7 +4164,7 @@ use super::*;
         b: 0b11101111,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4184,7 +4183,7 @@ use super::*;
         b: 0xFF,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4201,7 +4200,7 @@ use super::*;
         b: 0xFF,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4213,23 +4212,23 @@ use super::*;
 
   #[test]
   fn test_res_4_hl() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1234, 0xFF);
+    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    mmu.write(0xA234, 0xFF);
     let mut cpu = CPU { 
       registers: Registers {
-        h: 0x12,
+        h: 0xA2,
         l: 0x34,
         ..Registers::new()
       },
       mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
     cpu.call(0xA6);
 
     assert_eq!(cpu.ticks, 16);
-    let byte = cpu.mmu.read(0x1234);
+    let byte = cpu.mmu.read(0xA234);
     assert_eq!(byte, 0xEF);
   }
 
@@ -4240,7 +4239,7 @@ use super::*;
         b: 0x00,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4257,7 +4256,7 @@ use super::*;
         b: 0x00,
         ..Registers::new()
       },
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
@@ -4269,23 +4268,23 @@ use super::*;
 
   #[test]
   fn test_set_4_hl() {
-    let mut mmu = MMU::new_with_mbc3();
-    mmu.write(0x1234, 0x00);
+    let mbc3 = MBC3::new();
+    let mut mmu = MMU::new(mbc3);
+    mmu.write(0xA234, 0x00);
     let mut cpu = CPU { 
       registers: Registers {
-        h: 0x12,
+        h: 0xA2,
         l: 0x34,
         ..Registers::new()
       },
-      mmu,
-      ..CPU::new()
+      ..CPU::<MBC3>::new_with_mbc3()
     }; 
 
     cpu.call(0xCB);
     cpu.call(0xE6);
 
     assert_eq!(cpu.ticks, 16);
-    let byte = cpu.mmu.read(0x1234);
+    let byte = cpu.mmu.read(0xA234);
     assert_eq!(byte, 0x10);
   }
 

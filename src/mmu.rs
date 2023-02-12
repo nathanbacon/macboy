@@ -11,23 +11,22 @@ pub struct MMU<T> where T: MBC {
 impl<T: MBC> MMU<T> {
   pub fn new(mbc: T) -> MMU<T> {
     MMU {
-      bank0: [(); 0x4000].map(|_| 0),
-      bank1: [(); 0x4000].map(|_| 0),
       gpu: GPU::new(),
       mbc,
     }
   }
   
-  pub fn new_with_mbc3() -> MMU<T> {
-    MMU {
-      ..MMU::new(MBC3::new())
-    }
+  pub fn new_with_mbc3() -> MMU<MBC3> {
+    let mbc3 = MBC3::new();
+
+    MMU::new(mbc3)
   }
 
   pub fn read(&self, address: u16) -> u8 {
     let address = address as usize;
     match address {
       0x0000..=0x7FFF => self.mbc.read(address),
+      0xA000..=0xBFFF => self.mbc.read(address),
       _ => panic!("unimplemented address space"),
     }
   }
@@ -36,6 +35,7 @@ impl<T: MBC> MMU<T> {
     let address = address as usize;
     match address {
       0x0000..=0x7FFF => self.mbc.write(address, value),
+      0xA000..=0xBFFF => self.mbc.write(address, value),
       _ => panic!("unimplemented address space!"),
     }
   }
