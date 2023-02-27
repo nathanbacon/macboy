@@ -90,5 +90,22 @@ impl<T: MBC> MMU<T> {
       },
       _ => panic!("unimplemented address space!"),
     }
+
+    pub fn read_register(address: u16) -> u8 {
+      match address {
+        0xFF00 => 0u8, // TODO: P1
+        0xFF01 => 0u8, // TODO: SB
+        0xFF02 => 0u8, // TODO: SC
+        0xFF04 => 0u8, // TODO: DIV
+        0xFF05 => 0u8, // TODO: TIMA
+        0xFF06 => 0u8, // TODO: TMA
+        0xFF07 => 0u8, // TODO: TAC
+        0xFF4D => 0u8, // TODO: KEY1
+        0xFF56 => 0u8, // TODO: RP
+        0xFF4F => 0u8, // TODO: VBK
+        0xFF70 => 0u8, // TODO: SVBK
+        _ => panic!("unimplemented!"),
+      }
+    }
   }
 }
