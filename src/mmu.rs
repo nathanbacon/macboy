@@ -46,7 +46,7 @@ impl<T: MBC> MMU<T> {
         panic!("unimplemented");
       },
       0xFF00..=0xFF7F => {
-        panic!("unimplemented");
+        self.read_register(address)
       },
       0xFF80..=0xFFFE => {
         panic!("unimplemented");
@@ -80,7 +80,7 @@ impl<T: MBC> MMU<T> {
         panic!("unimplemented");
       },
       0xFF00..=0xFF7F => {
-        panic!("unimplemented");
+        self.write_register(address, value);
       },
       0xFF80..=0xFFFE => {
         panic!("unimplemented");
@@ -91,21 +91,40 @@ impl<T: MBC> MMU<T> {
       _ => panic!("unimplemented address space!"),
     }
 
-    pub fn read_register(address: u16) -> u8 {
-      match address {
-        0xFF00 => 0u8, // TODO: P1
-        0xFF01 => 0u8, // TODO: SB
-        0xFF02 => 0u8, // TODO: SC
-        0xFF04 => 0u8, // TODO: DIV
-        0xFF05 => 0u8, // TODO: TIMA
-        0xFF06 => 0u8, // TODO: TMA
-        0xFF07 => 0u8, // TODO: TAC
-        0xFF4D => 0u8, // TODO: KEY1
-        0xFF56 => 0u8, // TODO: RP
-        0xFF4F => 0u8, // TODO: VBK
-        0xFF70 => 0u8, // TODO: SVBK
-        _ => panic!("unimplemented!"),
-      }
+  }
+
+  fn write_register(&mut self, address: usize, value: u8) {
+    match address {
+      0xFF00 => {}, // TODO: P1
+      0xFF01 => {}, // TODO: SB
+      0xFF02 => {}, // TODO: SC
+      0xFF04 => {}, // TODO: DIV
+      0xFF05 => {}, // TODO: TIMA
+      0xFF06 => {}, // TODO: TMA
+      0xFF07 => {}, // TODO: TAC
+      0xFF4D => {}, // TODO: KEY1
+      0xFF56 => {}, // TODO: RP
+      0xFF4F => {}, // TODO: VBK
+      0xFF70 => {}, // TODO: SVBK
+      _ => panic!("unimplemented!"),
     }
   }
+
+  fn read_register(&self, address: usize) -> u8 {
+    match address {
+      0xFF00 => 0u8, // TODO: P1
+      0xFF01 => 0u8, // TODO: SB
+      0xFF02 => 0u8, // TODO: SC
+      0xFF04 => 0u8, // TODO: DIV
+      0xFF05 => 0u8, // TODO: TIMA
+      0xFF06 => 0u8, // TODO: TMA
+      0xFF07 => 0u8, // TODO: TAC
+      0xFF4D => 0u8, // TODO: KEY1
+      0xFF56 => 0u8, // TODO: RP
+      0xFF4F => 0u8, // TODO: VBK
+      0xFF70 => 0u8, // TODO: SVBK
+      _ => panic!("unimplemented!"),
+    }
+  }
+
 }
