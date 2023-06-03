@@ -2,19 +2,24 @@ use std::ops::{Index, IndexMut};
 
 use crate::gpu::GPU;
 use crate::cartridge::{Catridge, MBC, MBC3};
+use crate::sprite::Sprite;
 
 pub struct MMU<T> where T: MBC {
   gpu: GPU,
   mbc: T,
   working_memory: Box<[u8; 0x2000]>,
+  oam: Box<[Sprite; 40]>
 }
 
 impl<T: MBC> MMU<T> {
   pub fn new(mbc: T) -> MMU<T> {
+    let mut sprites: Box<[Sprite; 40]> = Box::new([(); 40].map(|_| Sprite::new()));
+
     MMU {
       gpu: GPU::new(),
       mbc,
       working_memory: Box::new([0u8; 0x2000]),
+      oam: sprites,
     }
   }
   
@@ -103,8 +108,11 @@ impl<T: MBC> MMU<T> {
       0xFF06 => {}, // TODO: TMA
       0xFF07 => {}, // TODO: TAC
       0xFF4D => {}, // TODO: KEY1
-      0xFF56 => {}, // TODO: RP
+      0xFF46 => { // DMA
+        self.dma(value);
+      },
       0xFF4F => {}, // TODO: VBK
+      0xFF56 => {}, // TODO: RP
       0xFF70 => {}, // TODO: SVBK
       _ => panic!("unimplemented!"),
     }
@@ -124,6 +132,25 @@ impl<T: MBC> MMU<T> {
       0xFF4F => 0u8, // TODO: VBK
       0xFF70 => 0u8, // TODO: SVBK
       _ => panic!("unimplemented!"),
+    }
+  }
+
+  fn dma(&mut self, value: u8) {
+    // a lazy OAM, this is done instantaneously in terms of machine ticks
+    // a proper implementation will be performed asynchronously with regular code
+    let start_address = (value as u16) << 8;
+    for i in (0..40).step_by(4) {
+      let sprite_address = start_address + i;
+      let y_pos = self.read(sprite_address);
+      let x_pos = self.read(sprite_address + 1);
+      let tile_number = self.read(sprite_address + 2);
+      let flags = self.read(sprite_address + 3);
+      let i = i as usize;
+      let sprite = &mut self.oam[i];
+      sprite.y = y_pos;
+      sprite.x = x_pos;
+      sprite.tile_number = tile_number;
+      sprite.write_flags(flags);
     }
   }
 

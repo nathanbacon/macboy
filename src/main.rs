@@ -7,6 +7,7 @@ mod cpu;
 mod mmu;
 mod cartridge;
 mod gpu;
+mod sprite;
 
 fn main() {
     println!("Hello, world!");
