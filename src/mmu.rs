@@ -24,7 +24,8 @@ impl<T: MBC> MMU<T> {
   }
   
   pub fn new_with_mbc3() -> MMU<MBC3> {
-    let mbc3 = MBC3::new();
+    let rom_banks = Box::new([(); 0x80].map(|_| Box::new([0u8; 0x4000])));
+    let mbc3 = MBC3::new(rom_banks);
 
     MMU::new(mbc3)
   }

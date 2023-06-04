@@ -50,6 +50,24 @@ impl<T: MBC> CPU<T> {
     }
   }
 
+  pub fn exec_next_instruction(&mut self) {
+    let pc = self.registers.pc;
+    let byte_code = self.read_mem(pc);
+    self.call(byte_code);
+  }
+
+  fn push_pc(&mut self) {
+    let mut sp = self.registers.sp;
+    let pc = self.registers.pc;
+    let p = (pc >> 8) as u8;
+    let c = pc as u8;
+    sp -= 1;
+    self.write_mem(sp, p);
+    sp -= 1;
+    self.write_mem(sp, c);
+    self.registers.sp = sp;
+  }
+
   pub fn read_mem(&mut self, address: u16) -> u8 {
     self.ticks += 4;
     self.mmu.read(address)
@@ -2254,11 +2272,11 @@ impl<T: MBC> CPU<T> {
   pub fn call(&mut self, opcode: u8) {
     {
       let opcode = opcode as usize;
-      if self.prefix_mode {
+      if !self.prefix_mode {
+        self.table[opcode](self);
+      } else {
         self.extended_table[opcode](self);
         self.prefix_mode = false;
-      } else {
-        self.table[opcode](self);
       }
 
       self.ticks += 4;
@@ -4268,7 +4286,8 @@ use super::*;
 
   #[test]
   fn test_set_4_hl() {
-    let mbc3 = MBC3::new();
+    let rom_banks = Box::new([(); 0x80].map(|_| Box::new([0u8; 0x4000])));
+    let mbc3 = MBC3::new(rom_banks);
     let mut mmu = MMU::new(mbc3);
     mmu.write(0xA234, 0x00);
     let mut cpu = CPU { 
