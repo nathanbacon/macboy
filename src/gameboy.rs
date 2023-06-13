@@ -4,6 +4,7 @@ pub struct Gameboy<T> where T: MBC {
   cpu: CPU<T>,
   gpu: GPU,
   ui_state: UIState,
+  ui_changed: bool,
 }
 
 impl<T: MBC> Gameboy<T> {
@@ -21,10 +22,20 @@ impl<T: MBC> Gameboy<T> {
         },
     }
 
+    if self.ui_changed {
+      self.ui_changed = false;
+      if self.ui_state.any_pressed() {
+        // TODO: this doesn't necessarily mean the that a new button has been pressed
+        // this should probably just be sent as a signal from the UI thread.
+        self.cpu.request_interrupt(Interrupt::Joypad);
+      }
+    }
+
     ticks
   }
 
   pub fn set_ui_state(&mut self, ui_state: UIState) {
     self.ui_state = ui_state;
+    self.ui_changed = true;
   }
 }
