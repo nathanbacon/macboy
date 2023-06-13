@@ -1,4 +1,11 @@
-use crate::{registers::{Registers, self}, mmu::MMU, cartridge::{MBC, MBC3}};
+use crate::{registers::{Registers, self}, interrupts::Interrupts, mmu::MMU, cartridge::{MBC, MBC3}};
+
+pub enum Interrupt {
+  VBlank = 0x40isize,
+  LCD = 0x48isize,
+  Timer = 0x50isize,
+  Joypad = 0x60isize,
+}
 
 pub struct CPU<T> where T: MBC {
   registers: Registers,
@@ -7,7 +14,8 @@ pub struct CPU<T> where T: MBC {
   extended_table: Vec<fn(&mut CPU<T>)>,
   interrupt_enabled: bool,
   prefix_mode: bool,
-  ticks: u64
+  ticks: u64,
+  interrupts: Interrupts,
 }
 
 macro_rules! wide {
@@ -35,25 +43,40 @@ impl<T: MBC> CPU<T> {
       interrupt_enabled: true,
       prefix_mode: false,
       ticks: 0,
+      interrupts: Interrupts::new(),
     }
   }
 
   pub fn new_with_mbc3() -> CPU<MBC3> {
     CPU {
-      registers: Registers::new(),
       mmu: MMU::<MBC3>::new_with_mbc3(),
       table: CPU::build(),
       extended_table: CPU::build_extended_table(),
       interrupt_enabled: true,
       prefix_mode: false,
       ticks: 0,
+      interrupts: Interrupts::new(),
+      registers: Registers::new(),
     }
   }
 
-  pub fn exec_next_instruction(&mut self) {
+  pub fn exec_next_instruction(&mut self) -> u64 {
+    self.ticks = 0;
     let pc = self.registers.pc;
     let byte_code = self.read_mem(pc);
     self.call(byte_code);
+    self.ticks
+  }
+
+  pub fn request_interrupt(&self, interrupt: Interrupt) {
+    if !self.interrupt_enabled { return; }
+
+    // match interrupt {
+    //   Interrupt::Joypad
+    //     Interrupt::VBlank => todo!(),
+    //     Interrupt::LCD => todo!(),
+    //     Interrupt::Timer => todo!(),
+    // }
   }
 
   fn push_pc(&mut self) {

@@ -1,6 +1,12 @@
+pub enum GpuEvent {
+  None,
+  LCD,
+  VBlank,
+}
 pub struct GPU {
   memory: Box<[u8; 0x2000]>,
-  oam: Box<[u8; 0xA0]>
+  oam: Box<[u8; 0xA0]>,
+  ticks: u64,
 }
 
 impl GPU {
@@ -8,7 +14,13 @@ impl GPU {
     GPU {
       memory: Box::new([0u8; 0x2000]),
       oam: Box::new([0u8; 0xA0]),
+      ticks: 0,
     }
+  }
+
+  pub fn go(&mut self, ticks: u64) -> GpuEvent {
+    self.ticks = self.ticks + ticks;
+    GpuEvent::None
   }
 
   pub fn read(&self, address: usize) -> u8 {
