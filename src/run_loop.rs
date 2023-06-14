@@ -5,13 +5,11 @@ use crate::{cpu::CPU, cartridge::MBC, utility::ui_state::UIState, gameboy::Gameb
 fn run_loop<T: MBC>(mut gameboy: Gameboy<T>, rx: Receiver<UIState>) {
   loop {
     let result = rx.try_recv();
-    match result {
-      Ok(ui_state) => {
-        gameboy.set_ui_state(ui_state);
-      }
-      Err(_) => {}
+    let mut sent_ui_state: Option<UIState> = None;
+    if let Ok(ui_state) = result {
+      sent_ui_state = Some(ui_state);
     }
 
-    gameboy.go();
+    gameboy.go(sent_ui_state);
   }
 }
