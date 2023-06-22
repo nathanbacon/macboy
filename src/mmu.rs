@@ -2,13 +2,15 @@ use std::ops::{Index, IndexMut};
 
 use crate::gpu::GPU;
 use crate::cartridge::{Catridge, MBC, MBC3};
+use crate::interrupts::Interrupts;
 use crate::sprite::Sprite;
 
 pub struct MMU<T> where T: MBC {
   gpu: GPU,
   mbc: T,
   working_memory: Box<[u8; 0x2000]>,
-  oam: Box<[Sprite; 40]>
+  oam: Box<[Sprite; 40]>,
+  interrupts: Interrupts,
 }
 
 impl<T: MBC> MMU<T> {
@@ -20,6 +22,7 @@ impl<T: MBC> MMU<T> {
       mbc,
       working_memory: Box::new([0u8; 0x2000]),
       oam: sprites,
+      interrupts: Interrupts::new(),
     }
   }
   
@@ -58,7 +61,7 @@ impl<T: MBC> MMU<T> {
         panic!("unimplemented");
       },
       0xFFFF => {
-        panic!("unimplemented");
+        self.interrupts.get()
       },
       _ => panic!("unimplemented address space"),
     }
@@ -92,7 +95,7 @@ impl<T: MBC> MMU<T> {
         panic!("unimplemented");
       },
       0xFFFF => {
-        panic!("unimplemented");
+        self.interrupts.set(value);
       },
       _ => panic!("unimplemented address space!"),
     }
