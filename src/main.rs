@@ -17,6 +17,7 @@ mod run_loop;
 mod gameboy;
 mod utility {
     pub mod ui_state;
+    pub(crate) mod convenience;
 }
 pub mod interrupts;
 use utility::ui_state::UIState;

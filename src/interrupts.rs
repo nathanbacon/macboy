@@ -1,3 +1,4 @@
+use crate::{utility::convenience}
 pub struct Interrupts {
   vblank_interrupt: bool,
   vblank_enabled: bool,
@@ -28,49 +29,25 @@ impl Interrupts {
     }
 
     pub fn set(&mut self, ie: u8) {
-      self.vblank_enabled = (ie & 0x01) == 0x01;
-      self.lcd_enabled = (ie & 0x02) == 0x02;
-      self.timer_enabled = (ie & 0x04) == 0x04;
-      self.serial_enabled = (ie & 0x08) == 0x08;
-      self.joypad_enabled = (ie & 0x10) == 0x10;
+      let flags = convenience::break_byte_into_flags(ie);
+      self.vblank_enabled = flags[0];
+      self.lcd_enabled = flags[1];
+      self.timer_enabled = flags[2];
+      self.serial_enabled = flags[3];
+      self.joypad_enabled = flags[4];
     }
 
     pub fn get(&self) -> u8 {
-      let vblank_bit: u8 = if self.vblank_enabled {
-        0x01
-      } else {
-        0
-      };
-
-      let lcd_bit: u8 = if self.lcd_enabled {
-        0x02
-      } else {
-        0
-      };
-
-      let timer_bit: u8 = if self.timer_enabled {
-        0x04
-      } else {
-        0
-      };
-
-      let serial_bit: u8 = if self.serial_enabled {
-        0x08
-      } else {
-        0
-      };
-
-      let joypad_bit: u8 = if self.joypad_enabled {
-        0x10
-      } else {
-        0
-      };
-
-      joypad_bit |
-      serial_bit |
-      timer_bit |
-      lcd_bit |
-      vblank_bit
+      convenience::collapse_flags_into_byte([
+        self.vblank_enabled,
+        self.lcd_enabled,
+        self.timer_enabled,
+        self.serial_enabled,
+        self.joypad_enabled,
+        false,
+        false,
+        false,
+        ])
     }
 }
 

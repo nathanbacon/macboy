@@ -5,20 +5,20 @@ use crate::cartridge::{Catridge, MBC, MBC3};
 use crate::interrupts::Interrupts;
 use crate::sprite::Sprite;
 
-pub struct MMU<T> where T: MBC {
-  gpu: GPU,
+pub struct MMU<'gpu, T> where T: MBC {
+  gpu: &'gpu GPU,
   mbc: T,
   working_memory: Box<[u8; 0x2000]>,
   oam: Box<[Sprite; 40]>,
   interrupts: Interrupts,
 }
 
-impl<T: MBC> MMU<T> {
-  pub fn new(mbc: T) -> MMU<T> {
+impl<'gpu, T: MBC> MMU<'gpu, T> {
+  pub fn new(mbc: T) -> MMU<'gpu, T> {
     let mut sprites: Box<[Sprite; 40]> = Box::new([(); 40].map(|_| Sprite::new()));
 
     MMU {
-      gpu: GPU::new(),
+      gpu: &GPU::new(),
       mbc,
       working_memory: Box::new([0u8; 0x2000]),
       oam: sprites,
@@ -26,7 +26,7 @@ impl<T: MBC> MMU<T> {
     }
   }
   
-  pub fn new_with_mbc3() -> MMU<MBC3> {
+  pub fn new_with_mbc3() -> MMU<'gpu, MBC3> {
     let rom_banks = Box::new([(); 0x80].map(|_| Box::new([0u8; 0x4000])));
     let mbc3 = MBC3::new(rom_banks);
 
