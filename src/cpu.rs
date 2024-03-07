@@ -1,4 +1,4 @@
-use crate::{registers::{Registers, self}, interrupts::Interrupts, mmu::MMU, cartridge::{MBC, MBC3}};
+use crate::{registers::{Registers, self}, interrupts::Interrupts, mmu::MMU, cartridge::{MBC, MBC3}, gpu::VRAM};
 
 pub enum Interrupt {
   VBlank = 0x40isize,
@@ -7,9 +7,9 @@ pub enum Interrupt {
   Joypad = 0x60isize,
 }
 
-pub struct CPU<T> where T: MBC {
+pub struct CPU<'a, T> where T: MBC {
   registers: Registers,
-  mmu: MMU<T>,
+  mmu: &'a mut MMU<'a, T>,
   table: Vec<fn(&mut CPU<T>)>,
   extended_table: Vec<fn(&mut CPU<T>)>,
   interrupt_enabled: bool,
@@ -29,34 +29,21 @@ macro_rules! wide {
     };
 }
 
-impl<T: MBC> CPU<T> {
+impl<'a, T: MBC> CPU<'a, T> {
   pub fn toggle_interrupts(&mut self, enabled: bool) {
     self.interrupt_enabled = enabled;
   }
 
-  pub fn new(mbc: T) -> CPU<T> {
+  pub fn new(mmu: &mut MMU<'a, T>) -> CPU<'a, T> {
     CPU {
       registers: Registers::new(),
-      mmu: MMU::<T>::new(mbc),
+      mmu,
       table: CPU::build(),
       extended_table: CPU::build_extended_table(),
       interrupt_enabled: true,
       prefix_mode: false,
       ticks: 0,
       interrupts: Interrupts::new(),
-    }
-  }
-
-  pub fn new_with_mbc3() -> CPU<MBC3> {
-    CPU {
-      mmu: MMU::<MBC3>::new_with_mbc3(),
-      table: CPU::build(),
-      extended_table: CPU::build_extended_table(),
-      interrupt_enabled: true,
-      prefix_mode: false,
-      ticks: 0,
-      interrupts: Interrupts::new(),
-      registers: Registers::new(),
     }
   }
 
@@ -2311,11 +2298,14 @@ impl<T: MBC> CPU<T> {
 #[cfg(test)]
 mod tests {
 
+use crate::gpu::VRAM;
+
 use super::*;
 
   #[test]
   fn test_ld_bc_word() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0xEF);
     mmu.write(0xA001, 0xBE);
 
@@ -2325,7 +2315,7 @@ use super::*;
         ..Registers::new()
       },
       mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(mmu)
     }; 
 
     cpu.call(0x01);
@@ -2336,7 +2326,8 @@ use super::*;
 
   #[test]
   fn test_ld_b_u8() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0x69);
 
     let mut cpu = CPU { 
@@ -2345,7 +2336,7 @@ use super::*;
         ..Registers::new()
       },
       mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(mmu)
     }; 
 
     cpu.call(0x06);
@@ -2357,14 +2348,15 @@ use super::*;
   
   #[test]
   fn test_daa() {
-
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0x11,
         b: 0x19,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x80);
@@ -2378,14 +2370,15 @@ use super::*;
 
   #[test]
   fn test_daa_carry() {
-
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0x01,
         b: 0x99,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x80);
@@ -2400,14 +2393,14 @@ use super::*;
 
   #[test]
   fn test_ld_b_c() {
-
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0x42,
         c: 0x69,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x41);
@@ -2418,7 +2411,8 @@ use super::*;
 
   #[test]
   fn test_ld_mem_bc_a() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0x0000, 0x34);
     mmu.write(0x0001, 0xA2);
 
@@ -2431,7 +2425,7 @@ use super::*;
         ..Registers::new()
       },
       mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x02);
@@ -2442,6 +2436,7 @@ use super::*;
 
   #[test]
   fn test_word_reg_inc() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x0000,
@@ -2449,7 +2444,7 @@ use super::*;
         c: 0xFF,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x03);
@@ -2460,13 +2455,14 @@ use super::*;
 
   #[test]
   fn test_inc_b() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x0000,
         b: 0x68,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x04);
@@ -2479,13 +2475,14 @@ use super::*;
 
   #[test]
   fn test_inc_b_overflowing() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x0000,
         b: 0xFF,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x04);
@@ -2498,13 +2495,14 @@ use super::*;
 
   #[test]
   fn test_inc_b_half_carry() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x0000,
         b: 0x0F,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x04);
@@ -2518,7 +2516,8 @@ use super::*;
 
   #[test]
   fn test_inc_mem_hl() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA234, 0x69 - 1);
     let mut cpu = CPU { 
       registers: Registers {
@@ -2527,8 +2526,7 @@ use super::*;
         f: 0xF0,
         ..Registers::new()
       },
-      mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x34);
@@ -2542,13 +2540,15 @@ use super::*;
 
   #[test]
   fn test_dec_b() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x0000,
         b: 0x6A,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x05);
@@ -2559,12 +2559,14 @@ use super::*;
 
   #[test]
   fn test_rlca() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b11000000,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x07);
@@ -2575,13 +2577,15 @@ use super::*;
 
   #[test]
   fn test_rla() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b11000000,
         f: 0,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x17);
@@ -2593,6 +2597,8 @@ use super::*;
 
   #[test]
   fn test_rla_with_incoming_carry() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut registers = Registers {
       a: 0b11000000,
       ..Registers::new()
@@ -2602,7 +2608,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x17);
@@ -2614,6 +2620,8 @@ use super::*;
 
   #[test]
   fn test_rla_without_outgoing_carry() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut registers = Registers {
       a: 0b01000000,
       ..Registers::new()
@@ -2623,7 +2631,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x17);
@@ -2635,12 +2643,13 @@ use super::*;
 
   #[test]
   fn test_rra() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b10000001,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x1F);
@@ -2652,6 +2661,8 @@ use super::*;
 
   #[test]
   fn test_rrca() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut registers = Registers {
       a: 0b00010001,
       ..Registers::new()
@@ -2659,7 +2670,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x0F);
@@ -2671,7 +2682,8 @@ use super::*;
 
   #[test]
   fn test_ld_u16_sp() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0x69);
     mmu.write(0xA001, 0xA0);
     let mut cpu = CPU {
@@ -2681,8 +2693,7 @@ use super::*;
         p: 0xEF,
         ..Registers::new()
       },
-      mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x08);
@@ -2694,6 +2705,8 @@ use super::*;
 
   #[test]
   fn test_add_hl_bc() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x00,
@@ -2703,7 +2716,7 @@ use super::*;
         c: 0xEF,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x09);
@@ -2715,7 +2728,8 @@ use super::*;
 
   #[test]
   fn test_ld_a_bc_() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA234, 0x69);
 
     let mut cpu = CPU { 
@@ -2726,8 +2740,7 @@ use super::*;
         c: 0x34,
         ..Registers::new()
       },
-      mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x0A);
@@ -2738,6 +2751,8 @@ use super::*;
 
   #[test]
   fn test_dec_bc() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0x00,
@@ -2746,7 +2761,7 @@ use super::*;
         c: 0x00,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x0B);
@@ -2758,15 +2773,15 @@ use super::*;
 
   #[test]
   fn test_jr_i8() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA010, 0x05);
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0xA010,
         ..Registers::new()
       },
-      mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x18);
@@ -2777,15 +2792,15 @@ use super::*;
 
   #[test]
   fn test_jr_i8_negative() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA010, i8::from(-5) as u8);
     let mut cpu = CPU { 
       registers: Registers {
         pc: 0xA010,
         ..Registers::new()
       },
-      mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x18);
@@ -2795,7 +2810,8 @@ use super::*;
 
   #[test]
   fn test_jr_nz_i8_zero() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA010, 0x05);
     let mut registers = Registers {
       pc: 0xA010,
@@ -2805,8 +2821,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x20);
@@ -2817,7 +2832,8 @@ use super::*;
 
   #[test]
   fn test_jr_nz_i8_not_zero() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA010, 0x05);
     let mut registers = Registers {
       pc: 0xA010,
@@ -2827,8 +2843,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x20);
@@ -2839,7 +2854,8 @@ use super::*;
 
   #[test]
   fn test_jr_nz_i8_not_zero_subtraction() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA010, -5i8 as u8);
     let mut registers = Registers {
       pc: 0xA010,
@@ -2849,8 +2865,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x20);
@@ -2861,7 +2876,8 @@ use super::*;
 
   #[test]
   fn test_jr_z_i8_zero() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA010, 0x05);
     let mut registers = Registers {
       pc: 0xA010,
@@ -2872,7 +2888,7 @@ use super::*;
     let mut cpu = CPU { 
       registers,
       mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x28);
@@ -2883,7 +2899,8 @@ use super::*;
 
   #[test]
   fn test_jr_z_i8_zero_subtraction() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA010, -5i8 as u8);
     let mut registers = Registers {
       pc: 0xA010,
@@ -2893,8 +2910,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x28);
@@ -2905,7 +2921,8 @@ use super::*;
 
   #[test]
   fn test_jr_z_i8_not_zero() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0x0010, 0x05);
     let mut registers = Registers {
       pc: 0x0010,
@@ -2915,8 +2932,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x28);
@@ -2927,12 +2943,14 @@ use super::*;
 
   #[test]
   fn test_cpl() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b10101010,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x2F);
@@ -2945,13 +2963,15 @@ use super::*;
 
   #[test]
   fn test_ccf() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut registers = Registers::new();
     registers.carry(true);
     registers.half_carry(true);
     registers.negative(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x3F);
@@ -2964,13 +2984,15 @@ use super::*;
 
   #[test]
   fn test_scf() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut registers = Registers::new();
     registers.carry(false);
     registers.half_carry(true);
     registers.negative(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x37);
@@ -2983,14 +3005,15 @@ use super::*;
 
   #[test]
   fn test_add_a_b() {
-
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0x13,
         b: 0x56,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x80);
@@ -3002,14 +3025,15 @@ use super::*;
 
   #[test]
   fn test_add_a_b_half_carry() {
-
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0x08,
         b: 0x08,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x80);
@@ -3023,14 +3047,15 @@ use super::*;
 
   #[test]
   fn test_add_a_b_carry() {
-
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0x80,
         b: 0x80,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x80);
@@ -3044,7 +3069,8 @@ use super::*;
 
   #[test]
   fn test_add_a_hl() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA234, 0x13);
 
     let mut cpu = CPU { 
@@ -3055,7 +3081,7 @@ use super::*;
         ..Registers::new()
       },
       mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x86);
@@ -3066,14 +3092,15 @@ use super::*;
 
   #[test]
   fn test_add_a_l_flags() {
-
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b10001001,
         l: 0b10001001,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x85);
@@ -3086,14 +3113,15 @@ use super::*;
 
   #[test]
   fn test_add_a_l_flags_off() {
-
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b00000001,
         l: 0b00000001,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x85);
@@ -3106,7 +3134,8 @@ use super::*;
 
   #[test]
   fn test_adc_a_b_with_carry() {
-
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut registers = Registers {
       a: 0b00001001,
       b: 0b10001001,
@@ -3117,7 +3146,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x88);
@@ -3130,13 +3159,15 @@ use super::*;
 
   #[test]
   fn test_sub_a_b() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0x69,
         b: 0x33,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x90);
@@ -3147,13 +3178,14 @@ use super::*;
 
   #[test]
   fn test_cp_a_b_half_carry() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b00010000,
         b: 1,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xB8);
@@ -3165,13 +3197,15 @@ use super::*;
 
   #[test]
   fn test_sub_a_b_half_carry() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b00010000,
         b: 1,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x90);
@@ -3184,13 +3218,15 @@ use super::*;
 
   #[test]
   fn test_sub_a_b_carry() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b00000000,
         b: 0b00010000,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x90);
@@ -3202,13 +3238,14 @@ use super::*;
 
   #[test]
   fn test_sub_a_b_both_carry() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b00000000,
         b: 0b00001000,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x90);
@@ -3220,13 +3257,15 @@ use super::*;
 
   #[test]
   fn test_cp_a_b_carry() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b00000000,
         b: 0b00010000,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xB8);
@@ -3238,6 +3277,8 @@ use super::*;
 
   #[test]
   fn test_sbc_a_b() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut registers = Registers {
       a: 0x69,
       b: 0x33,
@@ -3248,7 +3289,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x98);
@@ -3259,6 +3300,8 @@ use super::*;
 
   #[test]
   fn test_sbc_a_b_no_carry() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut registers = Registers {
       a: 0x69,
       b: 0x33,
@@ -3269,7 +3312,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0x98);
@@ -3280,13 +3323,15 @@ use super::*;
 
   #[test]
   fn test_and_a_b() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b10101010,
         b: 0b00001111,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xA0);
@@ -3299,13 +3344,15 @@ use super::*;
 
   #[test]
   fn test_or_a_b() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b10101010,
         b: 0b00001111,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xB0);
@@ -3318,13 +3365,15 @@ use super::*;
 
   #[test]
   fn test_xor_a_b() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b10101010,
         b: 0b01011111,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xA8);
@@ -3338,12 +3387,14 @@ use super::*;
 
   #[test]
   fn test_xor_a_a() {
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let mut cpu = CPU { 
       registers: Registers {
         a: 0b10101010,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xAF);
@@ -3357,7 +3408,8 @@ use super::*;
 
   #[test]
   fn test_ret() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0xEF);
     mmu.write(0xA001, 0xBE);
     let mmu = mmu;
@@ -3368,9 +3420,8 @@ use super::*;
     };
 
     let mut cpu = CPU {
-      mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xC9);
@@ -3383,10 +3434,10 @@ use super::*;
 
   #[test]
   fn test_ret_nz() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0xEF);
     mmu.write(0xA001, 0xBE);
-    let mmu = mmu;
     let mut registers = Registers {
       s: 0xA0,
       p: 0x00,
@@ -3396,9 +3447,8 @@ use super::*;
     let registers = registers;
 
     let mut cpu = CPU {
-      mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xC0);
@@ -3412,10 +3462,10 @@ use super::*;
 
   #[test]
   fn test_ret_nz_while_zero() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0xEF);
     mmu.write(0xA001, 0xBE);
-    let mmu = mmu;
     let mut registers = Registers {
       s: 0xA0,
       p: 0x00,
@@ -3426,9 +3476,8 @@ use super::*;
     let registers = registers;
 
     let mut cpu = CPU {
-      mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xC0);
@@ -3441,7 +3490,8 @@ use super::*;
 
   #[test]
   fn test_pop_bc() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0xEF);
     mmu.write(0xA001, 0xBE);
     let mmu = mmu;
@@ -3454,7 +3504,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xC1);
@@ -3468,7 +3518,8 @@ use super::*;
 
   #[test]
   fn test_push_bc() {
-    let mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     let registers = Registers {
       s: 0xA0,
       p: 0x02,
@@ -3478,9 +3529,8 @@ use super::*;
     };
 
     let mut cpu = CPU {
-      mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xC5);
@@ -3496,7 +3546,8 @@ use super::*;
   
   #[test]
   fn test_jp_u16() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0xEF);
     mmu.write(0xA001, 0xBE);
     let mmu = mmu;
@@ -3508,7 +3559,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xC3);
@@ -3520,7 +3571,8 @@ use super::*;
 
   #[test]
   fn test_jp_nz_u16() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0xEF);
     mmu.write(0xA001, 0xBE);
     let mmu = mmu;
@@ -3535,7 +3587,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xC2);
@@ -3547,7 +3599,8 @@ use super::*;
 
   #[test]
   fn test_jp_nz_u16_while_zero() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0xEF);
     mmu.write(0xA001, 0xBE);
     let mmu = mmu;
@@ -3562,7 +3615,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xC2);
@@ -3574,6 +3627,7 @@ use super::*;
 
   #[test]
   fn test_rst_18h() {
+    let mut gpu = VRAM::new();
     let registers = Registers {
       pc: 0xBEEF,
       s: 0xA0,
@@ -3583,7 +3637,7 @@ use super::*;
 
     let mut cpu = CPU {
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xDF);
@@ -3602,7 +3656,8 @@ use super::*;
 
   #[test]
   fn test_call() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0xEF);
     mmu.write(0xA001, 0xBE);
     let mmu = mmu;
@@ -3616,7 +3671,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xCD);
@@ -3635,7 +3690,8 @@ use super::*;
 
   #[test]
   fn test_add_sp_i8() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0x11);
     let mmu = mmu;
 
@@ -3649,7 +3705,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xE8);
@@ -3661,7 +3717,8 @@ use super::*;
 
   #[test]
   fn test_add_sp_i8_sub() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, (-0x11 as i8) as u8);
     let mmu = mmu;
 
@@ -3675,7 +3732,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xE8);
@@ -3688,7 +3745,8 @@ use super::*;
 
   #[test]
   fn test_ld_hl_sp_i8() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0x11);
     let mmu = mmu;
 
@@ -3702,7 +3760,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xF8);
@@ -3715,7 +3773,8 @@ use super::*;
 
   #[test]
   fn test_ld_a_mem_u16() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0x22);
     mmu.write(0xA001, 0xA1);
     mmu.write(0xA122, 0x69);
@@ -3729,7 +3788,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xFA);
@@ -3742,7 +3801,8 @@ use super::*;
 
   #[test]
   fn test_ld_mem_u16_a() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA000, 0x22);
     mmu.write(0xA001, 0xA1);
     mmu.write(0xA122, 0x33);
@@ -3757,7 +3817,7 @@ use super::*;
     let mut cpu = CPU {
       mmu,
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     };
 
     cpu.call(0xEA);
@@ -3770,12 +3830,13 @@ use super::*;
 
   #[test]
   fn test_rlc_b() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0b11000000,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -3790,12 +3851,13 @@ use super::*;
 
   #[test]
   fn test_rlc_b_zero() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0b00000000,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -3811,12 +3873,13 @@ use super::*;
 
   #[test]
   fn test_rlc_b_no_carry() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0b00000100,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -3832,12 +3895,13 @@ use super::*;
   
   #[test]
   fn test_rrc_b() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0b10000001,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -3852,6 +3916,7 @@ use super::*;
 
   #[test]
   fn test_rl_b() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b10000010,
       ..Registers::new()
@@ -3861,7 +3926,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -3876,6 +3941,7 @@ use super::*;
 
   #[test]
   fn test_rl_b_no_carry() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b10000010,
       ..Registers::new()
@@ -3885,7 +3951,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -3900,6 +3966,7 @@ use super::*;
 
   #[test]
   fn test_rr_b() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b10000011,
       ..Registers::new()
@@ -3909,7 +3976,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -3924,6 +3991,7 @@ use super::*;
 
   #[test]
   fn test_rr_b_no_carry() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b10000010,
       ..Registers::new()
@@ -3933,7 +4001,7 @@ use super::*;
 
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -3948,6 +4016,7 @@ use super::*;
 
   #[test]
   fn test_sla_b() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b11000001,
       ..Registers::new()
@@ -3956,7 +4025,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -3969,6 +4038,7 @@ use super::*;
 
   #[test]
   fn test_sla_b_no_carry() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b01000001,
       ..Registers::new()
@@ -3977,7 +4047,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -3990,6 +4060,7 @@ use super::*;
 
   #[test]
   fn test_sra_b() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b11000011,
       ..Registers::new()
@@ -3998,7 +4069,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4011,6 +4082,7 @@ use super::*;
 
   #[test]
   fn test_srl_b() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b11000011,
       ..Registers::new()
@@ -4019,7 +4091,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4034,6 +4106,7 @@ use super::*;
 
   #[test]
   fn test_srl_b_no_carry() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b11000010,
       ..Registers::new()
@@ -4042,7 +4115,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4057,6 +4130,7 @@ use super::*;
 
   #[test]
   fn test_srl_b_zero() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b00000001,
       ..Registers::new()
@@ -4065,7 +4139,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4080,6 +4154,7 @@ use super::*;
 
   #[test]
   fn test_sra_b_no_carry() {
+    let mut gpu = VRAM::new();
     let mut registers = Registers {
       b: 0b01000010,
       ..Registers::new()
@@ -4088,7 +4163,7 @@ use super::*;
     registers.carry(true);
     let mut cpu = CPU { 
       registers,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4101,12 +4176,13 @@ use super::*;
 
   #[test]
   fn test_swap_b() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0b11101000,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4122,12 +4198,13 @@ use super::*;
 
   #[test]
   fn test_swap_b_zero() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4143,12 +4220,13 @@ use super::*;
 
   #[test]
   fn test_bit_0_b_hi() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0b10000001,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4162,12 +4240,13 @@ use super::*;
 
   #[test]
   fn test_bit_0_b_lo() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0b10000000,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4181,12 +4260,13 @@ use super::*;
 
   #[test]
   fn test_bit_4_b_hi() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0b00010000,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4200,12 +4280,13 @@ use super::*;
 
   #[test]
   fn test_bit_4_b_lo() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0b11101111,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4219,12 +4300,13 @@ use super::*;
 
   #[test]
   fn test_res_0_b() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0xFF,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4236,12 +4318,13 @@ use super::*;
 
   #[test]
   fn test_res_4_b() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0xFF,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4253,7 +4336,8 @@ use super::*;
 
   #[test]
   fn test_res_4_hl() {
-    let mut mmu = MMU::<MBC3>::new_with_mbc3();
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::<MBC3>::new_with_mbc3(&mut gpu);
     mmu.write(0xA234, 0xFF);
     let mut cpu = CPU { 
       registers: Registers {
@@ -4262,7 +4346,7 @@ use super::*;
         ..Registers::new()
       },
       mmu,
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4275,12 +4359,13 @@ use super::*;
 
   #[test]
   fn test_set_0_b() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0x00,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4292,12 +4377,13 @@ use super::*;
 
   #[test]
   fn test_set_4_b() {
+    let mut gpu = VRAM::new();
     let mut cpu = CPU { 
       registers: Registers {
         b: 0x00,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);
@@ -4309,9 +4395,11 @@ use super::*;
 
   #[test]
   fn test_set_4_hl() {
+    let mut gpu = VRAM::new();
     let rom_banks = Box::new([(); 0x80].map(|_| Box::new([0u8; 0x4000])));
     let mbc3 = MBC3::new(rom_banks);
-    let mut mmu = MMU::new(mbc3);
+    let mut gpu = VRAM::new();
+    let mut mmu = MMU::new(&mut gpu, mbc3);
     mmu.write(0xA234, 0x00);
     let mut cpu = CPU { 
       registers: Registers {
@@ -4319,7 +4407,7 @@ use super::*;
         l: 0x34,
         ..Registers::new()
       },
-      ..CPU::<MBC3>::new_with_mbc3()
+      ..CPU::<MBC3>::new(&mut mmu)
     }; 
 
     cpu.call(0xCB);

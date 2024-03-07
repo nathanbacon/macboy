@@ -1,4 +1,5 @@
 use crate::cartridge::MBC3;
+use crate::gpu::VRAM;
 use crate::registers::Registers;
 use crate::mmu::MMU;
 use crate::cpu::CPU;
@@ -58,7 +59,8 @@ fn main() {
     }).collect::<Vec<_>>().into_boxed_slice();
 
     let mbc3 = MBC3::new(rom_banks);
-    let cpu = CPU::new(mbc3);
+    let mut gpu = VRAM::new();
+    let cpu = CPU::new(&mut gpu, mbc3);
 
     let (tx, rx) = mpsc::channel::<UIState>();
 

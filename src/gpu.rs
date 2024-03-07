@@ -46,20 +46,20 @@ impl LCDC {
 }
 
 pub struct STAT {
-  lyc_ly_coincidence
+  lyc_ly_coincidence: bool,
 }
 
 
-pub struct GPU {
+pub struct VRAM {
   memory: Box<[u8; 0x2000]>,
   oam: Box<[u8; 0xA0]>,
   lcdc: LCDC,
   ticks: u64,
 }
 
-impl GPU {
-  pub fn new() -> GPU {
-    GPU {
+impl VRAM {
+  pub fn new() -> VRAM {
+    VRAM {
       memory: Box::new([0u8; 0x2000]),
       oam: Box::new([0u8; 0xA0]),
       ticks: 0,

@@ -1,13 +1,13 @@
-use crate::{cartridge::MBC, cpu::{CPU, Interrupt}, gpu::{GPU, GpuEvent}, utility::ui_state::UIState};
+use crate::{cartridge::MBC, cpu::{CPU, Interrupt}, gpu::{VRAM, GpuEvent}, utility::ui_state::UIState};
 
-pub struct Gameboy<T> where T: MBC {
-  cpu: CPU<T>,
-  gpu: GPU,
+pub struct Gameboy<'a, T> where T: MBC {
+  cpu: CPU<'a, T>,
+  gpu: VRAM,
   ui_state: UIState,
   ui_changed: bool,
 }
 
-impl<T: MBC> Gameboy<T> {
+impl<'a, T: MBC> Gameboy<'a, T> {
   pub fn go(&mut self, ui_state: Option<UIState>) -> u64 {
     let ticks = self.cpu.exec_next_instruction();
     let gpu_event = self.gpu.go(ticks);

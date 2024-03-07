@@ -1,4 +1,4 @@
-use crate::{utility::convenience}
+use crate::utility::convenience;
 pub struct Interrupts {
   vblank_interrupt: bool,
   vblank_enabled: bool,
