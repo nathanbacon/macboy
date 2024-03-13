@@ -1,27 +1,27 @@
 use crate::cartridge::MBC3;
+use crate::cpu::CPU;
 use crate::gpu::VRAM;
 use crate::mmu::MMU;
-use crate::cpu::CPU;
 
 use std::env;
 use std::fs::File;
 use std::io::Read;
 
-mod registers;
-mod cpu;
-mod mmu;
 mod cartridge;
-mod gpu;
-mod sprite;
-mod run_loop;
+mod cpu;
 mod gameboy;
+mod gpu;
+mod mmu;
+mod registers;
+mod run_loop;
+mod sprite;
 mod utility {
-    pub mod ui_state;
     pub(crate) mod convenience;
+    pub mod ui_state;
 }
 pub mod interrupts;
-use utility::ui_state::UIState;
 use std::sync::mpsc;
+use utility::ui_state::UIState;
 
 fn main() {
     println!("Hello, world!");
@@ -50,11 +50,15 @@ fn main() {
 
     let mut buffer_offset = 0;
 
-    let rom_banks = buffer.chunks(0x4000).map(|c| {
-        let mut sized_array = [0u8; 0x4000];
-        sized_array.copy_from_slice(c);
-        Box::new(sized_array)
-    }).collect::<Vec<_>>().into_boxed_slice();
+    let rom_banks = buffer
+        .chunks(0x4000)
+        .map(|c| {
+            let mut sized_array = [0u8; 0x4000];
+            sized_array.copy_from_slice(c);
+            Box::new(sized_array)
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
 
     let mbc3 = MBC3::new(rom_banks);
     let mut gpu = VRAM::new();
@@ -62,5 +66,4 @@ fn main() {
     let cpu = CPU::new(&mut mmu);
 
     let (tx, rx) = mpsc::channel::<UIState>();
-
 }
