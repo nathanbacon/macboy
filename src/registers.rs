@@ -106,6 +106,6 @@ impl Registers {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  
 
 }

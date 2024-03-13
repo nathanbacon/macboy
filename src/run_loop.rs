@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use crate::{cpu::CPU, cartridge::MBC, utility::ui_state::UIState, gameboy::Gameboy};
+use crate::{cartridge::MBC, utility::ui_state::UIState, gameboy::Gameboy};
 
 fn run_loop<T: MBC>(mut gameboy: Gameboy<T>, rx: Receiver<UIState>) {
   loop {

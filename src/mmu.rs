@@ -1,12 +1,10 @@
-use std::ops::{Index, IndexMut};
-
 use crate::gpu::VRAM;
-use crate::cartridge::{Catridge, MBC, MBC3};
+use crate::cartridge::{MBC, MBC3};
 use crate::interrupts::Interrupts;
 use crate::sprite::Sprite;
 
 pub struct MMU<'a, T> where T: MBC {
-  gpu: &'a mut VRAM,
+  vram: &'a mut VRAM,
   mbc: T,
   working_memory: Box<[u8; 0x2000]>,
   oam: Box<[Sprite; 40]>,
@@ -14,11 +12,11 @@ pub struct MMU<'a, T> where T: MBC {
 }
 
 impl<'a, T: MBC> MMU<'a, T> {
-  pub fn new(gpu: &'a mut VRAM, mbc: T) -> MMU<T> {
+  pub fn new(vram: &'a mut VRAM, mbc: T) -> MMU<T> {
     let mut sprites: Box<[Sprite; 40]> = Box::new([(); 40].map(|_| Sprite::new()));
 
     MMU {
-      gpu,
+      vram,
       mbc,
       working_memory: Box::new([0u8; 0x2000]),
       oam: sprites,
@@ -26,18 +24,18 @@ impl<'a, T: MBC> MMU<'a, T> {
     }
   }
   
-  pub fn new_with_mbc3(gpu: &'a mut VRAM) -> MMU<MBC3> {
+  pub fn new_with_mbc3(vram: &'a mut VRAM) -> MMU<MBC3> {
     let rom_banks = Box::new([(); 0x80].map(|_| Box::new([0u8; 0x4000])));
     let mbc3 = MBC3::new(rom_banks);
 
-    MMU::new(gpu, mbc3)
+    MMU::new(vram, mbc3)
   }
 
   pub fn read(&self, address: u16) -> u8 {
     let address = address as usize;
     match address {
       0x0000..=0x7FFF => self.mbc.read(address),
-      0x8000..=0x9FFF => self.gpu.read(address),
+      0x8000..=0x9FFF => self.vram.read(address),
       0xA000..=0xBFFF => self.mbc.read(address),
       0xC000..=0xDFFF => {
         let address = 0x1FFF & address;
@@ -71,7 +69,7 @@ impl<'a, T: MBC> MMU<'a, T> {
     let address = address as usize;
     match address {
       0x0000..=0x7FFF => self.mbc.write(address, value),
-      0x8000..=0x9FFF => self.gpu.write(address, value),
+      0x8000..=0x9FFF => self.vram.write(address, value),
       0xA000..=0xBFFF => self.mbc.write(address, value),
       0xC000..=0xDFFF => {
         let address = address & 0x1FFF;

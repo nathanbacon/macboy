@@ -1,6 +1,5 @@
 use crate::cartridge::MBC3;
 use crate::gpu::VRAM;
-use crate::registers::Registers;
 use crate::mmu::MMU;
 use crate::cpu::CPU;
 
@@ -23,7 +22,6 @@ mod utility {
 pub mod interrupts;
 use utility::ui_state::UIState;
 use std::sync::mpsc;
-use std::thread;
 
 fn main() {
     println!("Hello, world!");
@@ -60,7 +58,8 @@ fn main() {
 
     let mbc3 = MBC3::new(rom_banks);
     let mut gpu = VRAM::new();
-    let cpu = CPU::new(&mut gpu, mbc3);
+    let mut mmu = MMU::new(&mut gpu, mbc3);
+    let cpu = CPU::new(&mut mmu);
 
     let (tx, rx) = mpsc::channel::<UIState>();
 
