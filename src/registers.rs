@@ -1,3 +1,5 @@
+mod gamepad_registers;
+
 pub struct Registers {
     pub a: u8,
     pub f: u8,
