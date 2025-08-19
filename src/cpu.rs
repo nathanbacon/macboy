@@ -1,4 +1,10 @@
-use crate::{cartridge::MBC, interrupts::Interrupts, mmu::MMU, registers::Registers, opcodes::{Opcode, ExtendedOpcode}};
+use crate::{
+    cartridge::MBC,
+    interrupts::Interrupts,
+    mmu::MMU,
+    opcodes::{ExtendedOpcode, Opcode},
+    registers::Registers,
+};
 
 pub enum Interrupt {
     VBlank = 0x40isize,
