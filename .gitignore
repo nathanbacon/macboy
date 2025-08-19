@@ -1,1 +1,7 @@
 /target
+
+# Coverage reports
+/coverage/
+*.profraw
+
+.DS_Store
