@@ -1,4 +1,4 @@
-use crate::{cartridge::MBC, interrupts::Interrupts, mmu::MMU, registers::Registers};
+use crate::{cartridge::MBC, interrupts::Interrupts, mmu::MMU, registers::Registers, opcodes::{Opcode, ExtendedOpcode}};
 
 pub enum Interrupt {
     VBlank = 0x40isize,
@@ -2396,6 +2396,35 @@ impl<'a, T: MBC> CPU<'a, T> {
             }
 
             self.ticks += 4;
+        }
+    }
+
+    /// Execute instruction by opcode enum - provides type safety and eliminates magic numbers
+    pub fn execute(&mut self, opcode: Opcode) {
+        self.call(opcode as u8);
+    }
+
+    /// Execute extended (CB-prefixed) instruction by opcode enum
+    pub fn execute_extended(&mut self, opcode: ExtendedOpcode) {
+        self.call(Opcode::CbPrefix as u8);
+        self.call(opcode as u8);
+    }
+
+    /// Get instruction mnemonic for the given opcode (useful for debugging)
+    pub fn get_instruction_mnemonic(&self, opcode: u8) -> &'static str {
+        if !self.prefix_mode {
+            Opcode::from(opcode).mnemonic()
+        } else {
+            ExtendedOpcode::from(opcode).mnemonic()
+        }
+    }
+
+    /// Get expected instruction timing for the given opcode
+    pub fn get_instruction_timing(&self, opcode: u8) -> u8 {
+        if !self.prefix_mode {
+            Opcode::from(opcode).timing()
+        } else {
+            ExtendedOpcode::from(opcode).timing()
         }
     }
 }

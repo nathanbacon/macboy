@@ -12,9 +12,11 @@ mod cpu;
 mod gameboy;
 mod gpu;
 mod mmu;
+mod opcodes;
 mod registers;
 mod run_loop;
 mod sprite;
+mod cpu_comprehensive_tests;
 mod utility {
     pub(crate) mod convenience;
     pub mod ui_state;
