@@ -11,13 +11,13 @@ pub struct CPU<'a, T>
 where
     T: MBC,
 {
-    registers: Registers,
-    mmu: &'a mut MMU<'a, T>,
+    pub registers: Registers,
+    pub mmu: &'a mut MMU<'a, T>,
     table: Vec<fn(&mut CPU<T>)>,
     extended_table: Vec<fn(&mut CPU<T>)>,
     interrupt_enabled: bool,
     prefix_mode: bool,
-    ticks: u64,
+    pub ticks: u64,
     interrupts: Interrupts,
 }
 
@@ -1653,8 +1653,7 @@ impl<'a, T: MBC> CPU<'a, T> {
                 {
                     let immed = cpu.read_mem(cpu.registers.pc) as i8;
                     cpu.registers.pc += 1;
-                    let not_zero = !cpu.registers.get_zero();
-                    if !not_zero {
+                    if cpu.registers.get_zero() {
                         return;
                     }
 
@@ -1673,8 +1672,7 @@ impl<'a, T: MBC> CPU<'a, T> {
                 {
                     let immed = cpu.read_mem(cpu.registers.pc) as i8;
                     cpu.registers.pc += 1;
-                    let not_carry = !cpu.registers.get_carry();
-                    if !not_carry {
+                    if cpu.registers.get_carry() {
                         return;
                     }
 
